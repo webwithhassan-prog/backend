@@ -6,6 +6,8 @@ const Plan = require("../models/Plan");
 const PremiumAddon = require("../models/PremiumAddon");
 const EBook = require("../models/EBook");
 const SalesLog = require("../models/SalesLog");
+const User = require("../models/User");
+const { sendPaymentReceiptEmail } = require("../services/emailService");
 const { pkrToUsdCents } = require("../utils/currency");
 const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
 const Coupon = require("../models/Coupon");
@@ -200,6 +202,22 @@ const stripeWebhook = async (req, res) => {
             amount: payment.amount,
             payment_ref: payment._id,
           });
+
+          try {
+            const [user, ebook] = await Promise.all([
+              User.findById(client.user_ref),
+              EBook.findById(ebook_id),
+            ]);
+            if (user) {
+              await sendPaymentReceiptEmail(user.email, {
+                items: [{ name: ebook?.title || "E-Book", amount: payment.amount }],
+                total: payment.amount,
+                paidAt: payment.updatedAt,
+              });
+            }
+          } catch (emailErr) {
+            console.error("Failed to send receipt email:", emailErr.message);
+          }
         }
       }
       return res.json({ received: true });
@@ -221,6 +239,7 @@ const stripeWebhook = async (req, res) => {
     }
 
     const plans = await Plan.find({ _id: { $in: planIdList } });
+    const receiptItems = [];
 
     for (const plan of plans) {
       const expiresAt = new Date();
@@ -249,6 +268,10 @@ const stripeWebhook = async (req, res) => {
           amount: payment.amount,
           payment_ref: payment._id,
         });
+        receiptItems.push({
+          name: `${plan.product_type === "dietplan" ? "Dietplan" : "Live Workout Sessions"} - ${plan.duration_days} Days`,
+          amount: payment.amount,
+        });
       }
     }
 
@@ -268,6 +291,10 @@ const stripeWebhook = async (req, res) => {
           amount: premiumPayment.amount,
           payment_ref: premiumPayment._id,
         });
+        receiptItems.push({
+          name: premiumAddon?.name || "Premium Add-on",
+          amount: premiumPayment.amount,
+        });
       }
     }
 
@@ -282,6 +309,21 @@ const stripeWebhook = async (req, res) => {
     client.access_expires_at = furthestExpiry;
 
     await client.save();
+
+    if (receiptItems.length > 0) {
+      try {
+        const user = await User.findById(client.user_ref);
+        if (user) {
+          await sendPaymentReceiptEmail(user.email, {
+            items: receiptItems,
+            total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
+            paidAt: new Date(),
+          });
+        }
+      } catch (emailErr) {
+        console.error("Failed to send receipt email:", emailErr.message);
+      }
+    }
   }
 
   res.json({ received: true });

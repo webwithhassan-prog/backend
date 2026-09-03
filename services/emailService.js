@@ -28,4 +28,36 @@ const sendPasswordResetEmail = async (toEmail, resetUrl) => {
   });
 };
 
-module.exports = { sendPasswordResetEmail };
+const sendPaymentReceiptEmail = async (toEmail, { items, total, paidAt }) => {
+  const rows = items
+    .map(
+      (item) => `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eaf1ff; color: #12224A;">${item.name}</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eaf1ff; color: #12224A; text-align: right;">Rs ${item.amount.toLocaleString()}</td>
+        </tr>`,
+    )
+    .join("");
+
+  await transporter.sendMail({
+    from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: "Your Fitness Zone payment receipt",
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #12224A;">Payment received — thank you!</h2>
+        <p style="color: #666;">Paid on ${new Date(paidAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          ${rows}
+          <tr>
+            <td style="padding: 12px 0; font-weight: bold; color: #12224A;">Total</td>
+            <td style="padding: 12px 0; font-weight: bold; color: #12224A; text-align: right;">Rs ${total.toLocaleString()}</td>
+          </tr>
+        </table>
+        <p style="color: #666; font-size: 13px;">You can view your active packages any time from your Profile. Questions about this charge? Just reply to this email.</p>
+      </div>
+    `,
+  });
+};
+
+module.exports = { sendPasswordResetEmail, sendPaymentReceiptEmail };
