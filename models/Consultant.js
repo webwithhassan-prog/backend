@@ -1,0 +1,53 @@
+const mongoose = require("mongoose");
+
+const consultantSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    specialty: {
+      type: String,
+      enum: [
+        "dietician",
+        "gynecologist",
+        "psychiatrist",
+        "personal_trainer",
+        "other",
+      ],
+      required: true,
+    },
+    photo_url: {
+      type: String,
+    },
+    title: {
+      type: String,
+      trim: true,
+    },
+    years_experience: {
+      type: Number,
+    },
+    session_duration: {
+      type: String,
+      trim: true,
+    },
+    bio: {
+      type: String,
+      trim: true,
+    },
+    schedule: [
+      {
+        day: {
+          type: String,
+          enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        },
+        start_time: String,
+        end_time: String,
+      },
+    ],
+  },
+  { timestamps: true },
+);
+
+module.exports = mongoose.model("Consultant", consultantSchema);
