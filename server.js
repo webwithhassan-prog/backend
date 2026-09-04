@@ -1,4 +1,9 @@
 require("dotenv").config();
+const dns = require("dns");
+// Render's network can't route outbound IPv6, but Node resolves hosts like
+// Gmail's SMTP server to an IPv6 address first, causing ENETUNREACH. This
+// forces IPv4 first for every outbound connection app-wide.
+dns.setDefaultResultOrder("ipv4first");
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
