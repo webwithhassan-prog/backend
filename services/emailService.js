@@ -8,6 +8,10 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // Force IPv4 — some hosts (e.g. Render) can't route outbound IPv6, and
+  // Node resolves Gmail's SMTP host to an IPv6 address first, causing
+  // ENETUNREACH. This forces the IPv4 route instead.
+  family: 4,
 });
 
 const sendPasswordResetEmail = async (toEmail, resetUrl) => {
