@@ -1,22 +1,27 @@
-const nodemailer = require("nodemailer");
+// Uses Resend's HTTP API (https://resend.com) instead of raw SMTP — SMTP ports
+// get blocked/timed out on some hosts (Render included), while a plain HTTPS
+// request never does.
+const RESEND_API_URL = "https://api.resend.com/emails";
+const FROM_ADDRESS = process.env.EMAIL_FROM || "Fitness Zone <onboarding@resend.dev>";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: false, // true for port 465, false for 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // Force IPv4 — some hosts (e.g. Render) can't route outbound IPv6, and
-  // Node resolves Gmail's SMTP host to an IPv6 address first, causing
-  // ENETUNREACH. This forces the IPv4 route instead.
-  family: 4,
-});
+const sendEmail = async ({ to, subject, html }) => {
+  const res = await fetch(RESEND_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from: FROM_ADDRESS, to, subject, html }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Resend API error (${res.status}): ${errBody}`);
+  }
+};
 
 const sendPasswordResetEmail = async (toEmail, resetUrl) => {
-  await transporter.sendMail({
-    from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
+  await sendEmail({
     to: toEmail,
     subject: "Reset your Fitness Zone password",
     html: `
@@ -43,8 +48,7 @@ const sendPaymentReceiptEmail = async (toEmail, { items, total, paidAt }) => {
     )
     .join("");
 
-  await transporter.sendMail({
-    from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
+  await sendEmail({
     to: toEmail,
     subject: "Your Fitness Zone payment receipt",
     html: `
