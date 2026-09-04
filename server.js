@@ -30,10 +30,11 @@ const dailyLogRoutes = require("./routes/dailyLogRoutes");
 const offerRoutes = require("./routes/offerRoutes");
 const couponRoutes = require("./routes/couponRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
+const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 
 const app = express();
 
-connectDB();
+connectDB().then(startDietplanScheduler);
 
 app.use(cors());
 app.use(

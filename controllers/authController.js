@@ -51,6 +51,12 @@ const login = async (req, res) => {
       let client_id = null;
       if (user.role === "client") {
         const client = await Client.findOne({ user_ref: user._id });
+        if (client?.banned) {
+          return res.status(403).json({
+            message: "This account has been banned. Contact support for help.",
+            banned: true,
+          });
+        }
         client_id = client?._id || null;
       }
 

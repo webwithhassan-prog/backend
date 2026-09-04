@@ -23,7 +23,7 @@ const getApplications = async (req, res) => {
 
 // @desc Approve an application — sets offer terms AND creates the live Consultant listing
 const approveApplication = async (req, res) => {
-  const { offer_terms } = req.body;
+  const { offer_terms, fee } = req.body;
 
   try {
     const application = await Application.findById(req.params.id);
@@ -50,6 +50,7 @@ const approveApplication = async (req, res) => {
         years_experience: application.years_experience,
         session_duration: application.session_duration,
         bio: application.bio,
+        fee: fee || undefined,
       });
     }
 

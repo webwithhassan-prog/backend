@@ -24,6 +24,14 @@ const clientSchema = new mongoose.Schema(
       enum: ["active", "paused", "expired"],
       default: "expired",
     },
+    banned: {
+      type: Boolean,
+      default: false,
+    },
+    ban_reason: {
+      type: String,
+      default: null,
+    },
     access_expires_at: {
       type: Date,
       default: null,
@@ -47,6 +55,14 @@ const clientSchema = new mongoose.Schema(
     diet_plans_used: {
       type: Number,
       default: 0,
+    },
+    last_dietplan_delivered_at: {
+      type: Date,
+      default: null,
+    },
+    dietplan_notification_pending: {
+      type: Boolean,
+      default: false,
     },
     premium_sessions_total: {
       type: Number,

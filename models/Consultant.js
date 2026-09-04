@@ -13,10 +13,14 @@ const consultantSchema = new mongoose.Schema(
         "dietician",
         "gynecologist",
         "psychiatrist",
+        "physiotherapist",
         "personal_trainer",
         "other",
       ],
       required: true,
+    },
+    fee: {
+      type: Number,
     },
     photo_url: {
       type: String,

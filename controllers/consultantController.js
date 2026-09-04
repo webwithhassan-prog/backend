@@ -51,10 +51,10 @@ const deleteConsultant = async (req, res) => {
   }
 };
 // @desc Get consultants (public — limited fields only)
-getPublicConsultants = async (req, res) => {
+const getPublicConsultants = async (req, res) => {
   try {
     const consultants = await Consultant.find().select(
-      "name specialty photo_url",
+      "name specialty photo_url years_experience session_duration fee",
     );
     res.json(consultants);
   } catch (err) {

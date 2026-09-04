@@ -1,4 +1,5 @@
 const Client = require("../models/Client");
+const User = require("../models/User");
 const PremiumAddon = require("../models/PremiumAddon");
 const { attachComputedAccess } = require("../utils/clientAccess");
 
@@ -90,6 +91,55 @@ const extendClient = async (req, res) => {
   }
 };
 
+// @desc Ban a client — blocks login and all API access, keeps their data intact
+const banClient = async (req, res) => {
+  const { reason } = req.body;
+
+  try {
+    const client = await Client.findByIdAndUpdate(
+      req.params.id,
+      { banned: true, ban_reason: reason || null },
+      { new: true },
+    );
+    if (!client) return res.status(404).json({ message: "Client not found" });
+    res.json(attachComputedAccess(client));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Unban a client
+const unbanClient = async (req, res) => {
+  try {
+    const client = await Client.findByIdAndUpdate(
+      req.params.id,
+      { banned: false, ban_reason: null },
+      { new: true },
+    );
+    if (!client) return res.status(404).json({ message: "Client not found" });
+    res.json(attachComputedAccess(client));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Permanently delete a client — removes their account and login entirely.
+// Payment/SalesLog history is kept for accounting records; only the client
+// and their login user are removed.
+const deleteClient = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    await User.findByIdAndDelete(client.user_ref);
+    await client.deleteOne();
+
+    res.json({ message: "Client deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // @desc Admin manually toggles which packages are active for a client (for
 // non-Stripe / WhatsApp-era activations). Grants a default quota on first
 // activation, and a default 30-day access window if none is set yet.
@@ -102,6 +152,9 @@ const togglePackages = async (req, res) => {
 
     if (has_dietplan && !client.has_dietplan) {
       client.diet_plans_total += 2;
+      if (!client.last_dietplan_delivered_at) {
+        client.last_dietplan_delivered_at = new Date();
+      }
     }
     if (has_premium && !client.has_premium) {
       const addon = await PremiumAddon.findOne();
@@ -144,12 +197,32 @@ const deliverDietPlan = async (req, res) => {
     }
 
     client.diet_plans_used += 1;
+    client.last_dietplan_delivered_at = new Date();
     await client.save();
 
     res.json({
       diet_plans_used: client.diet_plans_used,
       diet_plans_total: client.diet_plans_total,
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Client dismisses the "time for your new dietplan" notification
+const dismissDietplanNotification = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    if (client.user_ref.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    client.dietplan_notification_pending = false;
+    await client.save();
+
+    res.json({ dietplan_notification_pending: false });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -199,8 +272,12 @@ module.exports = {
   freezeClient,
   resumeClient,
   extendClient,
+  banClient,
+  unbanClient,
+  deleteClient,
   togglePackages,
   deliverDietPlan,
+  dismissDietplanNotification,
   recordProgressCheckin,
   completeOnboarding,
 };

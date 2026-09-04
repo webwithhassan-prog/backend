@@ -20,6 +20,7 @@ const applicationSchema = new mongoose.Schema(
         "dietician",
         "gynecologist",
         "psychiatrist",
+        "physiotherapist",
         "personal_trainer",
         "other",
       ],

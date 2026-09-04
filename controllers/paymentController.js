@@ -254,6 +254,9 @@ const stripeWebhook = async (req, res) => {
       if (plan.product_type === "dietplan") {
         client.has_dietplan = true;
         client.diet_plans_total += plan.diet_plans_included || 0;
+        if (!client.last_dietplan_delivered_at) {
+          client.last_dietplan_delivered_at = new Date();
+        }
       }
       if (plan.product_type === "workout") client.has_workout = true;
 
@@ -329,6 +332,80 @@ const stripeWebhook = async (req, res) => {
   res.json({ received: true });
 };
 
+// @desc Get a completed checkout's items/total for the client's receipt image
+// (never trusts client-supplied amounts — rebuilds everything from the
+// actual completed Payment records, same source of truth as the email receipt)
+const getCheckoutSessionDetails = async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ message: "Payment not completed yet" });
+    }
+
+    const client = await Client.findOne({ user_ref: req.user._id });
+    if (!client || client._id.toString() !== session.metadata.client_id) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    if (session.metadata.type === "ebook") {
+      const ebook = await EBook.findById(session.metadata.ebook_id);
+      const payment = await Payment.findOne({
+        client_ref: client._id,
+        status: "completed",
+      }).sort({ updatedAt: -1 });
+
+      return res.json({
+        items: [{ name: ebook?.title || "E-Book", amount: payment?.amount || 0 }],
+        total: payment?.amount || 0,
+        clientName: client.name,
+        paidAt: payment?.updatedAt || new Date(),
+      });
+    }
+
+    const planIdList = session.metadata.plan_ids.split(",");
+    const plans = await Plan.find({ _id: { $in: planIdList } });
+    const items = [];
+    let total = 0;
+    let paidAt = new Date();
+
+    for (const plan of plans) {
+      const payment = await Payment.findOne({
+        client_ref: client._id,
+        plan_ref: plan._id,
+        status: "completed",
+      }).sort({ updatedAt: -1 });
+      if (payment) {
+        items.push({
+          name: `${plan.product_type === "dietplan" ? "Dietplan" : "Live Workout Sessions"} - ${plan.duration_days} Days`,
+          amount: payment.amount,
+        });
+        total += payment.amount;
+        paidAt = payment.updatedAt;
+      }
+    }
+
+    if (session.metadata.include_premium === "true") {
+      const premiumPayment = await Payment.findOne({
+        client_ref: client._id,
+        plan_ref: null,
+        status: "completed",
+      }).sort({ updatedAt: -1 });
+      if (premiumPayment) {
+        const premiumAddon = await PremiumAddon.findOne();
+        items.push({
+          name: premiumAddon?.name || "Premium Add-on",
+          amount: premiumPayment.amount,
+        });
+        total += premiumPayment.amount;
+      }
+    }
+
+    res.json({ items, total, clientName: client.name, paidAt });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // @desc Record a 1-on-1 consultation payment with 15% platform commission
 const recordConsultationPayment = async (req, res) => {
   const { client_id, professional_id, amount, gateway } = req.body;
@@ -361,5 +438,6 @@ module.exports = {
   createStripeCheckout,
   createEbookCheckout,
   stripeWebhook,
+  getCheckoutSessionDetails,
   recordConsultationPayment,
 };
