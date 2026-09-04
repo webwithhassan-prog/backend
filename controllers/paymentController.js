@@ -7,6 +7,8 @@ const PremiumAddon = require("../models/PremiumAddon");
 const EBook = require("../models/EBook");
 const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
+const Consultant = require("../models/Consultant");
+const ConsultationRequest = require("../models/ConsultationRequest");
 const { sendPaymentReceiptEmail } = require("../services/emailService");
 const { pkrToUsdCents } = require("../utils/currency");
 const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
@@ -165,6 +167,57 @@ const createEbookCheckout = async (req, res) => {
   }
 };
 
+// @desc Create a Stripe checkout session for a 1-on-1 consultation booking
+const createConsultationCheckout = async (req, res) => {
+  const { client_id, consultant_id } = req.body;
+
+  try {
+    const consultant = await Consultant.findById(consultant_id);
+    if (!consultant)
+      return res.status(404).json({ message: "Consultant not found" });
+    if (!consultant.fee) {
+      return res
+        .status(400)
+        .json({ message: "This consultant has no session fee set yet" });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: `1-on-1 Session — ${consultant.name}` },
+            unit_amount: pkrToUsdCents(consultant.fee),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      managed_payments: { enabled: false },
+      success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
+      metadata: {
+        type: "consultation",
+        client_id,
+        consultant_id,
+      },
+    });
+
+    await Payment.create({
+      client_ref: client_id,
+      professional_ref: consultant_id,
+      gateway: "stripe",
+      amount: consultant.fee,
+      commission_amount: consultant.fee * 0.15,
+      status: "pending",
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // @desc Stripe webhook — confirm payment, activate client's plans or unlock e-book
 const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
@@ -218,6 +271,57 @@ const stripeWebhook = async (req, res) => {
           } catch (emailErr) {
             console.error("Failed to send receipt email:", emailErr.message);
           }
+        }
+      }
+      return res.json({ received: true });
+    }
+
+    // 1-on-1 consultation booking
+    if (session.metadata.type === "consultation") {
+      const { client_id, consultant_id } = session.metadata;
+
+      const payment = await Payment.findOneAndUpdate(
+        { client_ref: client_id, professional_ref: consultant_id, status: "pending" },
+        { status: "completed" },
+        { new: true, sort: { createdAt: -1 } },
+      );
+
+      if (payment) {
+        await SalesLog.create({
+          category: "consultation",
+          amount: payment.amount,
+          payment_ref: payment._id,
+        });
+
+        const consultant = await Consultant.findById(consultant_id);
+        if (consultant) {
+          await ConsultationRequest.create({
+            client_ref: client_id,
+            specialty: consultant.specialty,
+            preferred_consultant_ref: consultant_id,
+            status: "pending",
+            paid: true,
+            payment_ref: payment._id,
+          });
+        }
+
+        try {
+          const client = await Client.findById(client_id);
+          const user = client ? await User.findById(client.user_ref) : null;
+          if (user) {
+            await sendPaymentReceiptEmail(user.email, {
+              items: [
+                {
+                  name: `1-on-1 Session — ${consultant?.name || "Consultant"}`,
+                  amount: payment.amount,
+                },
+              ],
+              total: payment.amount,
+              paidAt: payment.updatedAt,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send receipt email:", emailErr.message);
         }
       }
       return res.json({ received: true });
@@ -362,6 +466,27 @@ const getCheckoutSessionDetails = async (req, res) => {
       });
     }
 
+    if (session.metadata.type === "consultation") {
+      const consultant = await Consultant.findById(session.metadata.consultant_id);
+      const payment = await Payment.findOne({
+        client_ref: client._id,
+        professional_ref: session.metadata.consultant_id,
+        status: "completed",
+      }).sort({ updatedAt: -1 });
+
+      return res.json({
+        items: [
+          {
+            name: `1-on-1 Session — ${consultant?.name || "Consultant"}`,
+            amount: payment?.amount || 0,
+          },
+        ],
+        total: payment?.amount || 0,
+        clientName: client.name,
+        paidAt: payment?.updatedAt || new Date(),
+      });
+    }
+
     const planIdList = session.metadata.plan_ids.split(",");
     const plans = await Plan.find({ _id: { $in: planIdList } });
     const items = [];
@@ -437,6 +562,7 @@ const recordConsultationPayment = async (req, res) => {
 module.exports = {
   createStripeCheckout,
   createEbookCheckout,
+  createConsultationCheckout,
   stripeWebhook,
   getCheckoutSessionDetails,
   recordConsultationPayment,

@@ -54,7 +54,7 @@ const deleteConsultant = async (req, res) => {
 const getPublicConsultants = async (req, res) => {
   try {
     const consultants = await Consultant.find().select(
-      "name specialty photo_url years_experience session_duration fee",
+      "name specialty photo_url years_experience session_duration fee bio max_clients_per_session",
     );
     res.json(consultants);
   } catch (err) {

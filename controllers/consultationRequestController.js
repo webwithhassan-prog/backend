@@ -74,7 +74,10 @@ const scheduleRequest = async (req, res) => {
     const client = await Client.findById(request.client_ref);
     if (!client) return res.status(404).json({ message: "Client not found" });
 
-    if (client.premium_sessions_used >= client.premium_sessions_total) {
+    if (
+      !request.paid &&
+      client.premium_sessions_used >= client.premium_sessions_total
+    ) {
       return res.status(403).json({
         message: "This client has no remaining Premium sessions to schedule.",
       });
@@ -84,14 +87,17 @@ const scheduleRequest = async (req, res) => {
       consultant_ref,
       client_ref: request.client_ref,
       datetime,
+      payment_ref: request.payment_ref || undefined,
     });
 
     request.status = "scheduled";
     request.consultation_ref = consultation._id;
     await request.save();
 
-    client.premium_sessions_used += 1;
-    await client.save();
+    if (!request.paid) {
+      client.premium_sessions_used += 1;
+      await client.save();
+    }
 
     res.json({
       request,

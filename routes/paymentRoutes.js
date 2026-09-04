@@ -7,11 +7,13 @@ const {
   stripeWebhook,
   recordConsultationPayment,
   createEbookCheckout,
+  createConsultationCheckout,
   getCheckoutSessionDetails,
 } = require('../controllers/paymentController');
 
 router.post('/stripe/checkout', protect, createStripeCheckout);
 router.post('/stripe/ebook-checkout', protect, createEbookCheckout);
+router.post('/stripe/consultation-checkout', protect, createConsultationCheckout);
 router.get('/session/:sessionId', protect, getCheckoutSessionDetails);
 
 router.post('/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook);

@@ -9,7 +9,7 @@ const consultationRequestSchema = new mongoose.Schema(
     },
     specialty: {
       type: String,
-      enum: ['dietician', 'gynecologist', 'psychiatrist', 'personal_trainer', 'other'],
+      enum: ['dietician', 'gynecologist', 'psychiatrist', 'physiotherapist', 'personal_trainer', 'other'],
       required: true,
     },
     preferred_consultant_ref: {
@@ -28,6 +28,15 @@ const consultationRequestSchema = new mongoose.Schema(
     consultation_ref: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Consultation',
+      default: null,
+    },
+    paid: {
+      type: Boolean,
+      default: false,
+    },
+    payment_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
       default: null,
     },
   },

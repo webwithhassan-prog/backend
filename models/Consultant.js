@@ -36,6 +36,9 @@ const consultantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    max_clients_per_session: {
+      type: Number,
+    },
     bio: {
       type: String,
       trim: true,
