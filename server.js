@@ -32,6 +32,7 @@ const couponRoutes = require("./routes/couponRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const testimonialRoutes = require("./routes/testimonialRoutes");
 const demoVideoRoutes = require("./routes/demoVideoRoutes");
+const transformationVideoRoutes = require("./routes/transformationVideoRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 
 const app = express();
@@ -73,6 +74,7 @@ app.use("/api/coupons", couponRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/demo-videos", demoVideoRoutes);
+app.use("/api/transformation-videos", transformationVideoRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
