@@ -175,6 +175,11 @@ const createConsultationCheckout = async (req, res) => {
     const consultant = await Consultant.findById(consultant_id);
     if (!consultant)
       return res.status(404).json({ message: "Consultant not found" });
+    if (consultant.banned) {
+      return res
+        .status(403)
+        .json({ message: "This consultant is not available for booking" });
+    }
     if (!consultant.fee) {
       return res
         .status(400)

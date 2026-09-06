@@ -43,6 +43,14 @@ const consultantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    banned: {
+      type: Boolean,
+      default: false,
+    },
+    ban_reason: {
+      type: String,
+      default: null,
+    },
     schedule: [
       {
         day: {
