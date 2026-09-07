@@ -127,7 +127,7 @@ const seedAll = async () => {
       if (!exists) {
         await Plan.create(p);
         console.log(
-          `Plan created: ${p.product_type} - ${p.duration_days} days - Rs ${p.price}`,
+          `Plan created: ${p.product_type} - ${p.duration_days} days - ₹${p.price}`,
         );
       }
     }
@@ -140,7 +140,7 @@ const seedAll = async () => {
         price: 1000,
         sessions_included: 1,
       });
-      console.log("Premium add-on created: Rs 1000");
+      console.log("Premium add-on created: ₹1000");
     }
 
     // 7. Classes (Timetable) — a few upcoming ones

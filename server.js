@@ -33,9 +33,14 @@ const analyticsRoutes = require("./routes/analyticsRoutes");
 const testimonialRoutes = require("./routes/testimonialRoutes");
 const demoVideoRoutes = require("./routes/demoVideoRoutes");
 const transformationVideoRoutes = require("./routes/transformationVideoRoutes");
+const currencyRoutes = require("./routes/currencyRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 
 const app = express();
+
+// Render sits behind a proxy — without this, req.ip is the proxy's address
+// instead of the real visitor IP, breaking IP-based country lookups.
+app.set("trust proxy", true);
 
 connectDB().then(startDietplanScheduler);
 
@@ -75,6 +80,7 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/demo-videos", demoVideoRoutes);
 app.use("/api/transformation-videos", transformationVideoRoutes);
+app.use("/api/currency", currencyRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

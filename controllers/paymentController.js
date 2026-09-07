@@ -10,7 +10,7 @@ const User = require("../models/User");
 const Consultant = require("../models/Consultant");
 const ConsultationRequest = require("../models/ConsultationRequest");
 const { sendPaymentReceiptEmail } = require("../services/emailService");
-const { pkrToUsdCents } = require("../utils/currency");
+const { inrToUsdCents } = require("../utils/currency");
 const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
 const Coupon = require("../models/Coupon");
 const {
@@ -18,6 +18,14 @@ const {
   validateCoupon,
   couponAppliesToType,
 } = require("../utils/couponDiscount");
+
+const PLAN_TYPE_LABELS = {
+  dietplan: "Dietplan",
+  workout: "Live Workout Sessions",
+  combo: "Complete Package (Dietplan + Workout)",
+};
+const planDisplayName = (plan) =>
+  `${PLAN_TYPE_LABELS[plan.product_type] || plan.product_type} - ${plan.duration_days} Days`;
 
 // @desc Create a Stripe checkout session for one or more plans + optional premium add-on
 const createStripeCheckout = async (req, res) => {
@@ -62,9 +70,9 @@ const createStripeCheckout = async (req, res) => {
       price_data: {
         currency: "usd",
         product_data: {
-          name: `${plan.product_type === "dietplan" ? "Dietplan" : "Live Workout Sessions"} - ${plan.duration_days} Days`,
+          name: planDisplayName(plan),
         },
-        unit_amount: pkrToUsdCents(finalPrice),
+        unit_amount: inrToUsdCents(finalPrice),
       },
       quantity: 1,
     }));
@@ -77,7 +85,7 @@ const createStripeCheckout = async (req, res) => {
           price_data: {
             currency: "usd",
             product_data: { name: premiumAddon.name },
-            unit_amount: pkrToUsdCents(premiumAddon.price),
+            unit_amount: inrToUsdCents(premiumAddon.price),
           },
           quantity: 1,
         });
@@ -138,7 +146,7 @@ const createEbookCheckout = async (req, res) => {
           price_data: {
             currency: "usd",
             product_data: { name: ebook.title },
-            unit_amount: pkrToUsdCents(ebook.price),
+            unit_amount: inrToUsdCents(ebook.price),
           },
           quantity: 1,
         },
@@ -192,7 +200,7 @@ const createConsultationCheckout = async (req, res) => {
           price_data: {
             currency: "usd",
             product_data: { name: `1-on-1 Session — ${consultant.name}` },
-            unit_amount: pkrToUsdCents(consultant.fee),
+            unit_amount: inrToUsdCents(consultant.fee),
           },
           quantity: 1,
         },
@@ -251,13 +259,14 @@ const stripeWebhook = async (req, res) => {
 
         const payment = await Payment.findOneAndUpdate(
           { client_ref: client_id, status: "pending" },
-          { status: "completed" },
+          { status: "completed", amount_usd: session.amount_total / 100 },
           { new: true, sort: { createdAt: -1 } },
         );
         if (payment) {
           await SalesLog.create({
             category: "ebook",
             amount: payment.amount,
+            amount_usd: payment.amount_usd,
             payment_ref: payment._id,
           });
 
@@ -287,7 +296,7 @@ const stripeWebhook = async (req, res) => {
 
       const payment = await Payment.findOneAndUpdate(
         { client_ref: client_id, professional_ref: consultant_id, status: "pending" },
-        { status: "completed" },
+        { status: "completed", amount_usd: session.amount_total / 100 },
         { new: true, sort: { createdAt: -1 } },
       );
 
@@ -295,6 +304,7 @@ const stripeWebhook = async (req, res) => {
         await SalesLog.create({
           category: "consultation",
           amount: payment.amount,
+          amount_usd: payment.amount_usd,
           payment_ref: payment._id,
         });
 
@@ -360,14 +370,16 @@ const stripeWebhook = async (req, res) => {
         expires_at: expiresAt,
       });
 
-      if (plan.product_type === "dietplan") {
+      if (plan.product_type === "dietplan" || plan.product_type === "combo") {
         client.has_dietplan = true;
         client.diet_plans_total += plan.diet_plans_included || 0;
         if (!client.last_dietplan_delivered_at) {
           client.last_dietplan_delivered_at = new Date();
         }
       }
-      if (plan.product_type === "workout") client.has_workout = true;
+      if (plan.product_type === "workout" || plan.product_type === "combo") {
+        client.has_workout = true;
+      }
 
       const payment = await Payment.findOneAndUpdate(
         { client_ref: client_id, plan_ref: plan._id, status: "pending" },
@@ -375,13 +387,17 @@ const stripeWebhook = async (req, res) => {
         { new: true },
       );
       if (payment) {
+        payment.amount_usd = inrToUsdCents(payment.amount) / 100;
+        await payment.save();
+
         await SalesLog.create({
           category: "package",
           amount: payment.amount,
+          amount_usd: payment.amount_usd,
           payment_ref: payment._id,
         });
         receiptItems.push({
-          name: `${plan.product_type === "dietplan" ? "Dietplan" : "Live Workout Sessions"} - ${plan.duration_days} Days`,
+          name: planDisplayName(plan),
           amount: payment.amount,
         });
       }
@@ -398,9 +414,13 @@ const stripeWebhook = async (req, res) => {
         { new: true, sort: { createdAt: -1 } },
       );
       if (premiumPayment) {
+        premiumPayment.amount_usd = inrToUsdCents(premiumPayment.amount) / 100;
+        await premiumPayment.save();
+
         await SalesLog.create({
           category: "package",
           amount: premiumPayment.amount,
+          amount_usd: premiumPayment.amount_usd,
           payment_ref: premiumPayment._id,
         });
         receiptItems.push({
@@ -506,7 +526,7 @@ const getCheckoutSessionDetails = async (req, res) => {
       }).sort({ updatedAt: -1 });
       if (payment) {
         items.push({
-          name: `${plan.product_type === "dietplan" ? "Dietplan" : "Live Workout Sessions"} - ${plan.duration_days} Days`,
+          name: planDisplayName(plan),
           amount: payment.amount,
         });
         total += payment.amount;

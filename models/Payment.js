@@ -20,6 +20,13 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // The actual amount charged via Stripe (always USD — the currency
+    // switcher on the site is display-only, Stripe always settles in USD),
+    // set once the webhook confirms the payment completed.
+    amount_usd: {
+      type: Number,
+      default: null,
+    },
     status: {
       type: String,
       enum: ["pending", "completed", "failed"],

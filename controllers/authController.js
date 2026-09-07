@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const Client = require("../models/Client");
 const { sendPasswordResetEmail } = require("../services/emailService");
+const { lookupCountryFromIp } = require("../utils/geolocation");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
@@ -20,12 +21,16 @@ const registerClient = async (req, res) => {
 
     const user = await User.create({ email, password, role: "client" });
 
+    const { country, country_code } = await lookupCountryFromIp(req.ip);
+
     const client = await Client.create({
       user_ref: user._id,
       name,
       phone_number,
       status: "expired",
       days_remaining: 0,
+      country,
+      country_code,
     });
 
     res.status(201).json({

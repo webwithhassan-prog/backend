@@ -38,7 +38,7 @@ const sendPaymentReceiptEmail = async (toEmail, { items, total, paidAt }) => {
       (item) => `
         <tr>
           <td style="padding: 10px 0; border-bottom: 1px solid #eaf1ff; color: #12224A;">${item.name}</td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #eaf1ff; color: #12224A; text-align: right;">Rs ${item.amount.toLocaleString()}</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eaf1ff; color: #12224A; text-align: right;">₹${item.amount.toLocaleString("en-IN")}</td>
         </tr>`,
     )
     .join("");
@@ -55,7 +55,7 @@ const sendPaymentReceiptEmail = async (toEmail, { items, total, paidAt }) => {
           ${rows}
           <tr>
             <td style="padding: 12px 0; font-weight: bold; color: #12224A;">Total</td>
-            <td style="padding: 12px 0; font-weight: bold; color: #12224A; text-align: right;">Rs ${total.toLocaleString()}</td>
+            <td style="padding: 12px 0; font-weight: bold; color: #12224A; text-align: right;">₹${total.toLocaleString("en-IN")}</td>
           </tr>
         </table>
         <p style="color: #666; font-size: 13px;">You can view your active packages any time from your Profile. Questions about this charge? Just reply to this email.</p>

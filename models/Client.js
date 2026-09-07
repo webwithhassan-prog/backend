@@ -32,6 +32,14 @@ const clientSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    country: {
+      type: String,
+      default: null,
+    },
+    country_code: {
+      type: String,
+      default: null,
+    },
     access_expires_at: {
       type: Date,
       default: null,
@@ -83,7 +91,7 @@ const clientSchema = new mongoose.Schema(
     active_plans: [
       {
         plan_ref: { type: mongoose.Schema.Types.ObjectId, ref: "Plan" },
-        product_type: { type: String, enum: ["dietplan", "workout"] },
+        product_type: { type: String, enum: ["dietplan", "workout", "combo"] },
         expires_at: Date,
       },
     ],

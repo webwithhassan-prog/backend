@@ -4,7 +4,7 @@ const planSchema = new mongoose.Schema(
   {
     product_type: {
       type: String,
-      enum: ["dietplan", "workout"],
+      enum: ["dietplan", "workout", "combo"],
       required: true,
     },
     duration_days: {
@@ -17,8 +17,12 @@ const planSchema = new mongoose.Schema(
       required: true,
     },
     diet_plans_included: {
-      type: Number, // only relevant for 'dietplan' type
+      type: Number, // only relevant for 'dietplan' and 'combo' types
       default: null,
+    },
+    features: {
+      type: [String],
+      default: [],
     },
   },
   { timestamps: true },
