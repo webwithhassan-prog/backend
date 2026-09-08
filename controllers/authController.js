@@ -170,10 +170,29 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// TEMPORARY — diagnosing a live email-delivery issue on Render. Remove once
+// resolved. Gated on JWT_SECRET as a crude shared-secret check so it isn't
+// wide open while it exists.
+const debugTestEmail = async (req, res) => {
+  if (req.query.key !== process.env.JWT_SECRET) {
+    return res.status(404).json({ message: "Not found" });
+  }
+  try {
+    await sendPasswordResetEmail(
+      "hassan521ansari@gmail.com",
+      "https://fitnesszone.ltd/reset-password/debugtoken",
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+};
+
 module.exports = {
   registerClient,
   login,
   changePassword,
   forgotPassword,
   resetPassword,
+  debugTestEmail,
 };
