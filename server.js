@@ -68,6 +68,20 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.send("Fitness Platform API running");
 });
+
+// TEMP diagnostic — confirms Zoom credentials work on Render specifically
+// (can't be tested any other way without admin login). Remove after use.
+app.get("/api/_debug/zoom-test", async (req, res) => {
+  if (req.query.key !== process.env.JWT_SECRET) return res.status(404).end();
+  try {
+    const { createRecurringMeeting, deleteZoomMeeting } = require("./services/zoomService");
+    const { meeting_id, join_url } = await createRecurringMeeting({ topic: "TEMP diagnostic — safe to ignore" });
+    await deleteZoomMeeting(meeting_id);
+    res.json({ ok: true, join_url });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.response?.data || err.message });
+  }
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/consultants", consultantRoutes);
