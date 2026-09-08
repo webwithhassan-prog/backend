@@ -104,11 +104,17 @@ const createStripeCheckout = async (req, res) => {
       // Dietplans and live workout sessions involve real human delivery
       // (dietitian review, live trainer-led classes) — Stripe's Managed
       // Payments explicitly excludes anything but a fully automated digital
-      // product, so this stays on classic Checkout. Card stays first so
-      // Apple Pay/Google Pay still surface automatically for eligible
-      // devices — they aren't separate entries in this list.
+      // product, so this stays on classic Checkout.
+      //
+      // No explicit payment_method_types here on purpose: Stripe rejects
+      // the *entire* session at creation time if a listed type isn't
+      // activated on the account (confirmed live — PayPal broke checkout
+      // for every customer, not just PayPal users, the moment it was added
+      // without first activating it in the Stripe dashboard). Omitting the
+      // field lets Stripe fall back to whatever's actually enabled — Card
+      // plus Apple Pay/Google Pay for eligible devices. Re-add "paypal"
+      // here once it's confirmed active under Settings -> Payment methods.
       managed_payments: { enabled: false },
-      payment_method_types: ["card", "paypal"],
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
       metadata: {
@@ -263,8 +269,11 @@ const createConsultationCheckout = async (req, res) => {
       mode: "payment",
       // A live, human-delivered 1-on-1 session is explicitly excluded from
       // Managed Payments' "fully automated digital product" requirement.
+      //
+      // No explicit payment_method_types here on purpose — see the same
+      // note on the package checkout above: Stripe rejects the whole
+      // session if a listed type isn't activated on the account.
       managed_payments: { enabled: false },
-      payment_method_types: ["card", "paypal"],
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
       metadata: {
