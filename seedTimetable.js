@@ -2,6 +2,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const Trainer = require("./models/Trainer");
 const Class = require("./models/Class");
+const { toPKTParts, pktToDate } = require("./utils/pktTime");
 
 // Workout type by day of week (Sunday defaults to the daily Cardio & Facial Yoga session)
 const workoutByDay = {
@@ -28,11 +29,6 @@ const timeSlots = [
   { trainer: "Miss Fatema", hour: 21, minute: 0 },
 ];
 
-const pktToUtc = (year, month, day, hour, minute) => {
-  // Pakistan is UTC+5 — build the UTC instant directly by subtracting 5 hours
-  return new Date(Date.UTC(year, month, day, hour - 5, minute));
-};
-
 const seedTimetable = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
@@ -54,23 +50,20 @@ const seedTimetable = async () => {
       trainerMap[name] = trainer;
     }
 
-    // 2. Create classes for the next 7 days
-    const today = new Date();
+    // 2. Create classes for the next 7 days (in Pakistan calendar days,
+    // regardless of what timezone this script happens to run in)
+    const todayParts = toPKTParts();
+    const startOfToday = pktToDate(todayParts.year, todayParts.month, todayParts.day);
     let created = 0;
     let skipped = 0;
 
     for (let i = 0; i < 7; i++) {
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() + i);
-      const dayOfWeek = targetDate.getDay(); // 0 = Sunday
+      const targetPKT = new Date(startOfToday.getTime() + i * 24 * 60 * 60 * 1000);
+      const { year, month, day, dayOfWeek } = toPKTParts(targetPKT);
       const type = workoutByDay[dayOfWeek];
 
-      const year = targetDate.getFullYear();
-      const month = targetDate.getMonth();
-      const day = targetDate.getDate();
-
       for (const slot of timeSlots) {
-        const datetime = pktToUtc(year, month, day, slot.hour, slot.minute);
+        const datetime = pktToDate(year, month, day, slot.hour, slot.minute);
         const trainer = trainerMap[slot.trainer];
 
         const exists = await Class.findOne({

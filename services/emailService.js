@@ -178,7 +178,7 @@ const sendPaymentReceiptEmail = async (
               : ""
           }
           <span style="color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">
-            Paid on ${new Date(paidAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+            Paid on ${new Date(paidAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Karachi" })}
           </span>
         </td>
       </tr>
