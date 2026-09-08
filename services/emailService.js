@@ -3,11 +3,15 @@
 // while the exact same code sends instantly from a normal machine — no
 // amount of IPv4/timeout tuning fixes a blocked port). Resend's API sends
 // over plain HTTPS instead of an SMTP socket, which sidesteps that
-// restriction entirely. `RESEND_FROM` lets a verified custom domain replace
-// the sandbox sender once one's set up in the Resend dashboard; until then
-// the sandbox address only actually delivers to the account's own signup
-// email, though the API call itself still succeeds for any recipient.
+// restriction entirely. `RESEND_FROM` overrides the sandbox sender once a
+// domain is verified in the Resend dashboard; until then the sandbox
+// address only actually delivers to the account's own signup email, though
+// the API call itself still succeeds for any recipient.
 const RESEND_FROM = process.env.RESEND_FROM || "Fitness Zone <onboarding@resend.dev>";
+// The templates invite a reply ("Questions about this charge? Just reply
+// to this email") — `noreply@fitnesszone.ltd` can send but nothing reads
+// it, so replies are routed to the real inbox that's actually monitored.
+const REPLY_TO = process.env.EMAIL_REPLY_TO || "fitnesszoneofficial.uk26@gmail.com";
 
 const sendEmail = async ({ to, subject, html }) => {
   const res = await fetch("https://api.resend.com/emails", {
@@ -16,7 +20,13 @@ const sendEmail = async ({ to, subject, html }) => {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: RESEND_FROM, to, subject, html }),
+    body: JSON.stringify({
+      from: RESEND_FROM,
+      to,
+      subject,
+      html,
+      reply_to: REPLY_TO,
+    }),
   });
   if (!res.ok) {
     const errBody = await res.text();
