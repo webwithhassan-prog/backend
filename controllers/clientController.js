@@ -1,6 +1,6 @@
+const crypto = require("crypto");
 const Client = require("../models/Client");
 const User = require("../models/User");
-const PremiumAddon = require("../models/PremiumAddon");
 const { attachComputedAccess } = require("../utils/clientAccess");
 
 // @desc Get all clients (Enrollments)
@@ -8,6 +8,48 @@ const getClients = async (req, res) => {
   try {
     const clients = await Client.find();
     res.json(clients.map(attachComputedAccess));
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Manually create a client (admin) — e.g. a walk-in / cash / WhatsApp
+// signup. If no password is given, a random one is generated and returned
+// once in the response so the admin can share it with the client.
+const createClient = async (req, res) => {
+  const { name, phone_number, email, password } = req.body;
+
+  try {
+    if (!name || !phone_number || !email) {
+      return res
+        .status(400)
+        .json({ message: "Name, phone number, and email are required" });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: "A user with this email already exists" });
+    }
+
+    const generatedPassword = password || crypto.randomBytes(4).toString("hex");
+
+    const user = await User.create({
+      email,
+      password: generatedPassword,
+      role: "client",
+    });
+
+    const client = await Client.create({
+      user_ref: user._id,
+      name,
+      phone_number,
+      status: "expired",
+    });
+
+    res.status(201).json({
+      client: attachComputedAccess(client),
+      generated_password: password ? undefined : generatedPassword,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -144,7 +186,7 @@ const deleteClient = async (req, res) => {
 // non-Stripe / WhatsApp-era activations). Grants a default quota on first
 // activation, and a default 30-day access window if none is set yet.
 const togglePackages = async (req, res) => {
-  const { has_dietplan, has_workout, has_premium } = req.body;
+  const { has_dietplan, has_workout } = req.body;
 
   try {
     const client = await Client.findById(req.params.id);
@@ -156,16 +198,11 @@ const togglePackages = async (req, res) => {
         client.last_dietplan_delivered_at = new Date();
       }
     }
-    if (has_premium && !client.has_premium) {
-      const addon = await PremiumAddon.findOne();
-      client.premium_sessions_total += addon?.sessions_included || 1;
-    }
 
     client.has_dietplan = has_dietplan;
     client.has_workout = has_workout;
-    client.has_premium = has_premium;
 
-    const anyPackageActive = has_dietplan || has_workout || has_premium;
+    const anyPackageActive = has_dietplan || has_workout;
 
     if (anyPackageActive && !client.access_expires_at) {
       const defaultExpiry = new Date();
@@ -268,6 +305,7 @@ const completeOnboarding = async (req, res) => {
 
 module.exports = {
   getClients,
+  createClient,
   getClientById,
   freezeClient,
   resumeClient,

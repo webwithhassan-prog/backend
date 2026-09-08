@@ -76,9 +76,22 @@ const rejectApplication = async (req, res) => {
   }
 };
 
+// @desc Delete an application
+const deleteApplication = async (req, res) => {
+  try {
+    const application = await Application.findByIdAndDelete(req.params.id);
+    if (!application)
+      return res.status(404).json({ message: "Application not found" });
+    res.json({ message: "Application removed" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   createApplication,
   getApplications,
   approveApplication,
   rejectApplication,
+  deleteApplication,
 };

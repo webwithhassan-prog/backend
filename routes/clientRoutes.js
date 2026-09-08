@@ -4,6 +4,7 @@ const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
   getClients,
+  createClient,
   getClientById,
   freezeClient,
   resumeClient,
@@ -19,6 +20,7 @@ const {
 } = require("../controllers/clientController");
 
 router.get("/", protect, adminOnly, getClients);
+router.post("/", protect, adminOnly, createClient);
 router.get("/:id", protect, getClientById);
 router.put("/:id/freeze", protect, adminOnly, freezeClient);
 router.put("/:id/resume", protect, adminOnly, resumeClient);

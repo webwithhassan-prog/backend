@@ -7,6 +7,7 @@ const {
   getApplications,
   approveApplication,
   rejectApplication,
+  deleteApplication,
 } = require('../controllers/applicationController');
 
 // Public route — anyone can apply
@@ -16,5 +17,6 @@ router.post('/', createApplication);
 router.get('/', protect, adminOnly, getApplications);
 router.put('/:id/approve', protect, adminOnly, approveApplication);
 router.put('/:id/reject', protect, adminOnly, rejectApplication);
+router.delete('/:id', protect, adminOnly, deleteApplication);
 
 module.exports = router;

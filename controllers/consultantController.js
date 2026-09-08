@@ -1,4 +1,5 @@
 const Consultant = require("../models/Consultant");
+const Review = require("../models/Review");
 
 // @desc Get all consultants
 const getConsultants = async (req, res) => {
@@ -50,13 +51,37 @@ const deleteConsultant = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-// @desc Get consultants (public — limited fields only, banned ones hidden)
+// @desc Get consultants (public — limited fields only, banned ones hidden,
+// each with an average rating + review count from client reviews)
 const getPublicConsultants = async (req, res) => {
   try {
     const consultants = await Consultant.find({ banned: { $ne: true } }).select(
       "name specialty photo_url years_experience session_duration fee bio max_clients_per_session",
     );
-    res.json(consultants);
+
+    const ratings = await Review.aggregate([
+      {
+        $group: {
+          _id: "$consultant_ref",
+          avg_rating: { $avg: "$rating" },
+          review_count: { $sum: 1 },
+        },
+      },
+    ]);
+    const ratingsById = Object.fromEntries(
+      ratings.map((r) => [r._id.toString(), r]),
+    );
+
+    const withRatings = consultants.map((c) => {
+      const r = ratingsById[c._id.toString()];
+      return {
+        ...c.toObject(),
+        avg_rating: r ? Math.round(r.avg_rating * 10) / 10 : null,
+        review_count: r ? r.review_count : 0,
+      };
+    });
+
+    res.json(withRatings);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

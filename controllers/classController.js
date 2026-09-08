@@ -2,10 +2,19 @@ const Class = require('../models/Class');
 const Trainer = require('../models/Trainer');
 const { createZoomMeeting } = require('../services/zoomService');
 
-// @desc Get all classes (public — limited fields, upcoming only)
+// @desc Get all classes (public — limited fields). Defaults to upcoming-only
+// (used by the public "Join Class" picker, which shouldn't offer classes
+// that have already happened). Pass ?scope=today to also include classes
+// already conducted earlier today (used by the client dashboard, which
+// shows the full day's schedule with past slots marked "Class Done").
 const getPublicClasses = async (req, res) => {
   try {
-    const classes = await Class.find({ datetime: { $gte: new Date() } })
+    let fromDate = new Date();
+    if (req.query.scope === 'today') {
+      fromDate = new Date();
+      fromDate.setHours(0, 0, 0, 0);
+    }
+    const classes = await Class.find({ datetime: { $gte: fromDate } })
       .populate('trainer_ref', 'name')
       .select('type datetime trainer_ref status cancel_reason');
     res.json(classes);
@@ -14,10 +23,19 @@ const getPublicClasses = async (req, res) => {
   }
 };
 
-// @desc Get all classes (Timetable)
+// @desc Get classes (Timetable) — optionally narrowed to a date range via
+// ?from=&to= (ISO dates) so the admin view doesn't have to pull the whole,
+// ever-growing history just to show today/tomorrow
 const getClasses = async (req, res) => {
   try {
-    const classes = await Class.find().populate('trainer_ref', 'name specialty');
+    const { from, to } = req.query;
+    const filter = {};
+    if (from || to) {
+      filter.datetime = {};
+      if (from) filter.datetime.$gte = new Date(from);
+      if (to) filter.datetime.$lte = new Date(to);
+    }
+    const classes = await Class.find(filter).populate('trainer_ref', 'name specialty');
     res.json(classes);
   } catch (err) {
     res.status(500).json({ message: err.message });

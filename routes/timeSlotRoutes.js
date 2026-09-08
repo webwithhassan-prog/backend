@@ -9,6 +9,8 @@ const {
   deleteTimeSlot,
 } = require("../controllers/timeSlotController");
 
+router.get("/public", getTimeSlots);
+
 router.get("/", protect, adminOnly, getTimeSlots);
 router.post("/", protect, adminOnly, createTimeSlot);
 router.put("/:id", protect, adminOnly, updateTimeSlot);

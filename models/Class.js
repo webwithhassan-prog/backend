@@ -16,9 +16,11 @@ const classSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    // No cap by default — Zoom sessions here aren't attendance-limited.
+    // Left as an optional override in case a specific session ever needs one.
     capacity: {
       type: Number,
-      default: 20,
+      default: null,
     },
     status: {
       type: String,

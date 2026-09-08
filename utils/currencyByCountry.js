@@ -20,11 +20,10 @@ const COUNTRY_TO_CURRENCY_CODE = {
   MV: "MVR", BT: "BTN",
 };
 
-// Well-known symbols for the currencies most likely to matter here.
-// Anything not listed falls back to showing the ISO code (e.g. "AED 500").
 const CURRENCY_SYMBOLS = {
   PKR: "₨", GBP: "£", USD: "$", CAD: "C$", AUD: "A$", NZD: "NZ$",
   EUR: "€", AED: "AED ", SAR: "SAR ", QAR: "QAR ", KWD: "KWD ",
+  OMR: "OMR ", MYR: "RM ",
   JPY: "¥", CNY: "¥", KRW: "₩", HKD: "HK$", SGD: "S$", THB: "฿",
   ZAR: "R", BRL: "R$", TRY: "₺", RUB: "₽", CHF: "CHF ", NGN: "₦",
   IDR: "Rp", PHP: "₱", VND: "₫", BDT: "৳", LKR: "Rs ", NPR: "Rs ",

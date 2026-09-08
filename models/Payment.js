@@ -2,14 +2,23 @@ const mongoose = require("mongoose");
 
 const paymentSchema = new mongoose.Schema(
   {
+    // Optional — a manually-created custom invoice (negotiated, off-menu
+    // deal) may be paid by someone who isn't a registered Client at all.
     client_ref: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Client",
-      required: true,
     },
     plan_ref: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Plan",
+    },
+    ebook_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EBook",
+    },
+    course_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Course",
     },
     gateway: {
       type: String,
@@ -20,10 +29,22 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    // The actual amount charged via Stripe (always USD — the currency
-    // switcher on the site is display-only, Stripe always settles in USD),
-    // set once the webhook confirms the payment completed.
-    amount_usd: {
+    // The actual amount charged via Stripe (always GBP — the currency
+    // switcher on the site is display-only, Stripe always settles in GBP),
+    // set once the webhook confirms the payment completed. Records from
+    // before the GBP switch hold a USD amount under this same field.
+    amount_settled: {
+      type: Number,
+      default: null,
+    },
+    // The currency the client had selected in the site's currency switcher
+    // at checkout time, and the equivalent amount in that currency — for
+    // showing each sale the way that specific client actually saw it.
+    currency_code: {
+      type: String,
+      default: "INR",
+    },
+    amount_display: {
       type: Number,
       default: null,
     },
@@ -32,7 +53,12 @@ const paymentSchema = new mongoose.Schema(
       enum: ["pending", "completed", "failed"],
       default: "pending",
     },
-    // For 1-on-1 consultation payments (10% platform commission)
+    // Assigned once, from the shared "invoice" counter, when the webhook
+    // confirms payment — real customer-facing invoice numbers, never reused.
+    invoice_number: {
+      type: String,
+    },
+    // For 1-on-1 consultation payments (15% platform commission)
     professional_ref: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Consultant",

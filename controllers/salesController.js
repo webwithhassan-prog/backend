@@ -1,12 +1,12 @@
 const Payment = require('../models/Payment');
 const SalesLog = require('../models/SalesLog');
-const { inrToUsdCents } = require('../utils/currency');
+const { inrToGbpPence } = require('../utils/currency');
 
-// For records predating the amount_usd field (or any edge case where it
+// For records predating the amount_settled field (or any edge case where it
 // wasn't set), fall back to converting the INR amount at today's rate —
 // approximate, but keeps older entries from showing as blank/zero.
-const usdAmountOf = (doc) =>
-  doc.amount_usd != null ? doc.amount_usd : inrToUsdCents(doc.amount) / 100;
+const settledAmountOf = async (doc) =>
+  doc.amount_settled != null ? doc.amount_settled : (await inrToGbpPence(doc.amount)) / 100;
 
 // @desc Total sales - daily & monthly summary
 const getSalesSummary = async (req, res) => {
@@ -23,14 +23,23 @@ const getSalesSummary = async (req, res) => {
       Payment.find({ status: 'completed', createdAt: { $gte: startOfMonth } }),
     ]);
 
-    const sum = (payments, field) =>
-      payments.reduce((total, p) => total + (field === 'usd' ? usdAmountOf(p) : p.amount), 0);
+    const sumInr = (payments) =>
+      payments.reduce((total, p) => total + p.amount, 0);
+    const sumSettled = async (payments) => {
+      const amounts = await Promise.all(payments.map(settledAmountOf));
+      return amounts.reduce((total, a) => total + a, 0);
+    };
+
+    const [daily_total_settled, monthly_total_settled] = await Promise.all([
+      sumSettled(dailyPayments),
+      sumSettled(monthlyPayments),
+    ]);
 
     res.json({
-      daily_total: sum(dailyPayments, 'inr'),
-      monthly_total: sum(monthlyPayments, 'inr'),
-      daily_total_usd: sum(dailyPayments, 'usd'),
-      monthly_total_usd: sum(monthlyPayments, 'usd'),
+      daily_total: sumInr(dailyPayments),
+      monthly_total: sumInr(monthlyPayments),
+      daily_total_settled,
+      monthly_total_settled,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -46,13 +55,14 @@ const getSalesByCategory = async (req, res) => {
     const logs = await SalesLog.find(filter).sort({ date: -1 });
 
     const total = logs.reduce((sum, log) => sum + log.amount, 0);
-    const total_usd = logs.reduce((sum, log) => sum + usdAmountOf(log), 0);
-    const logsWithUsd = logs.map((log) => ({
+    const settledAmounts = await Promise.all(logs.map(settledAmountOf));
+    const total_settled = settledAmounts.reduce((sum, a) => sum + a, 0);
+    const logsWithSettled = logs.map((log, i) => ({
       ...log.toObject(),
-      amount_usd: usdAmountOf(log),
+      amount_settled: settledAmounts[i],
     }));
 
-    res.json({ total, total_usd, count: logs.length, logs: logsWithUsd });
+    res.json({ total, total_settled, count: logs.length, logs: logsWithSettled });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

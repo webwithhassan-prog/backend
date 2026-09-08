@@ -6,7 +6,8 @@ const { getCurrencyForCountry, CURRENCY_SYMBOLS } = require("../utils/currencyBy
 // table underneath supports far more, but a picker only needs the ones
 // clients actually ask for.
 const SELECTABLE_CURRENCIES = [
-  "INR", "PKR", "USD", "GBP", "EUR", "AED", "SAR", "AUD", "CAD",
+  "AED", "AUD", "CAD", "EUR", "GBP", "INR", "KWD", "MYR", "OMR",
+  "PKR", "QAR", "SAR", "USD",
 ];
 
 // @desc Full INR-based rate table, for converting to whatever currency the
@@ -18,7 +19,9 @@ const getRates = async (req, res) => {
       code,
       symbol: code === "INR" ? "₹" : CURRENCY_SYMBOLS[code] || `${code} `,
       rate: code === "INR" ? 1 : rates[code] || null,
-    })).filter((c) => c.rate !== null);
+    }))
+      .filter((c) => c.rate !== null)
+      .sort((a, b) => a.code.localeCompare(b.code));
 
     res.json({ base: "INR", currencies, rates });
   } catch (err) {

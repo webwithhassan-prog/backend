@@ -5,7 +5,6 @@ const Client = require("./models/Client");
 const Trainer = require("./models/Trainer");
 const Consultant = require("./models/Consultant");
 const Plan = require("./models/Plan");
-const PremiumAddon = require("./models/PremiumAddon");
 const Class = require("./models/Class");
 const EBook = require("./models/EBook");
 const RecordedContent = require("./models/RecordedContent");
@@ -130,17 +129,6 @@ const seedAll = async () => {
           `Plan created: ${p.product_type} - ${p.duration_days} days - ₹${p.price}`,
         );
       }
-    }
-
-    // 6. Premium add-on
-    let addon = await PremiumAddon.findOne();
-    if (!addon) {
-      addon = await PremiumAddon.create({
-        name: "Premium Consultation Add-on",
-        price: 1000,
-        sessions_included: 1,
-      });
-      console.log("Premium add-on created: ₹1000");
     }
 
     // 7. Classes (Timetable) — a few upcoming ones

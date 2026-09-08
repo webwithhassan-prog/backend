@@ -1,33 +1,33 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const consultationRequestSchema = new mongoose.Schema(
   {
     client_ref: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Client',
+      ref: "Client",
       required: true,
     },
     specialty: {
       type: String,
-      enum: ['dietician', 'gynecologist', 'psychiatrist', 'physiotherapist', 'personal_trainer', 'other'],
       required: true,
     },
     preferred_consultant_ref: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Consultant',
+      ref: "Consultant",
       default: null,
     },
     preferred_time: {
       type: String,
+      default: "",
     },
     status: {
       type: String,
-      enum: ['pending', 'scheduled', 'declined'],
-      default: 'pending',
+      enum: ["pending", "scheduled", "declined"],
+      default: "pending",
     },
     consultation_ref: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Consultation',
+      ref: "Consultation",
       default: null,
     },
     paid: {
@@ -36,11 +36,11 @@ const consultationRequestSchema = new mongoose.Schema(
     },
     payment_ref: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Payment',
+      ref: "Payment",
       default: null,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-module.exports = mongoose.model('ConsultationRequest', consultationRequestSchema);
+module.exports = mongoose.model("ConsultationRequest", consultationRequestSchema);

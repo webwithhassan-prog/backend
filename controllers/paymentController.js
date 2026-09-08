@@ -3,14 +3,17 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const Payment = require("../models/Payment");
 const Client = require("../models/Client");
 const Plan = require("../models/Plan");
-const PremiumAddon = require("../models/PremiumAddon");
 const EBook = require("../models/EBook");
+const Course = require("../models/Course");
 const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
 const Consultant = require("../models/Consultant");
 const ConsultationRequest = require("../models/ConsultationRequest");
 const { sendPaymentReceiptEmail } = require("../services/emailService");
-const { inrToUsdCents } = require("../utils/currency");
+const { inrToGbpPence } = require("../utils/currency");
+const { convertFromInr } = require("../utils/exchangeRates");
+const { getNextInvoiceNumber } = require("../models/Counter");
+const { completeCustomInvoice } = require("./customInvoiceController");
 const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
 const Coupon = require("../models/Coupon");
 const {
@@ -27,9 +30,25 @@ const PLAN_TYPE_LABELS = {
 const planDisplayName = (plan) =>
   `${PLAN_TYPE_LABELS[plan.product_type] || plan.product_type} - ${plan.duration_days} Days`;
 
-// @desc Create a Stripe checkout session for one or more plans + optional premium add-on
+// Stripe's Managed Payments requires an eligible tax code per line item, and
+// only covers "fully automated" digital products with no human delivery —
+// which rules out dietplans, live workout sessions, and 1-on-1 consultations
+// (all real human-delivered services). Only e-books and courses (pre-recorded,
+// no live instructor) genuinely qualify, so only those two run through it;
+// everything else stays on classic Checkout via managed_payments: false.
+const TAX_CODES = {
+  ebook: "txcd_10302000", // Digital Books - downloaded, permanent rights
+  course: "txcd_20060158", // On demand Online Courses - streamed
+};
+
+// @desc Create a Stripe checkout session for one or more plans
 const createStripeCheckout = async (req, res) => {
-  const { client_id, plan_ids, include_premium, coupon_code } = req.body;
+  const {
+    client_id,
+    plan_ids,
+    coupon_code,
+    currency_code = "INR",
+  } = req.body;
 
   try {
     if (!plan_ids || plan_ids.length === 0) {
@@ -66,44 +85,38 @@ const createStripeCheckout = async (req, res) => {
       }),
     );
 
-    const line_items = pricedPlans.map(({ plan, finalPrice }) => ({
-      price_data: {
-        currency: "usd",
-        product_data: {
-          name: planDisplayName(plan),
-        },
-        unit_amount: inrToUsdCents(finalPrice),
-      },
-      quantity: 1,
-    }));
-
-    let premiumAddon = null;
-    if (include_premium) {
-      premiumAddon = await PremiumAddon.findOne();
-      if (premiumAddon) {
-        line_items.push({
-          price_data: {
-            currency: "usd",
-            product_data: { name: premiumAddon.name },
-            unit_amount: inrToUsdCents(premiumAddon.price),
+    const line_items = await Promise.all(
+      pricedPlans.map(async ({ plan, finalPrice }) => ({
+        price_data: {
+          currency: "gbp",
+          product_data: {
+            name: planDisplayName(plan),
           },
-          quantity: 1,
-        });
-      }
-    }
+          unit_amount: await inrToGbpPence(finalPrice),
+        },
+        quantity: 1,
+      })),
+    );
 
     const session = await stripe.checkout.sessions.create({
       line_items,
       mode: "payment",
+      // Dietplans and live workout sessions involve real human delivery
+      // (dietitian review, live trainer-led classes) — Stripe's Managed
+      // Payments explicitly excludes anything but a fully automated digital
+      // product, so this stays on classic Checkout. Card stays first so
+      // Apple Pay/Google Pay still surface automatically for eligible
+      // devices — they aren't separate entries in this list.
       managed_payments: { enabled: false },
+      payment_method_types: ["card", "paypal"],
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
       metadata: {
         type: "package",
         client_id,
         plan_ids: plan_ids.join(","),
-        include_premium: include_premium ? "true" : "false",
         coupon_code: coupon ? coupon.code : "",
+        display_currency: currency_code,
       },
     });
 
@@ -113,16 +126,9 @@ const createStripeCheckout = async (req, res) => {
         plan_ref: plan._id,
         gateway: "stripe",
         amount: finalPrice,
+        currency_code,
         status: "pending",
         coupon_code: coupon ? coupon.code : undefined,
-      });
-    }
-    if (premiumAddon) {
-      await Payment.create({
-        client_ref: client_id,
-        gateway: "stripe",
-        amount: premiumAddon.price,
-        status: "pending",
       });
     }
 
@@ -134,7 +140,7 @@ const createStripeCheckout = async (req, res) => {
 
 // @desc Create a Stripe checkout session for an e-book
 const createEbookCheckout = async (req, res) => {
-  const { client_id, ebook_id } = req.body;
+  const { client_id, ebook_id, currency_code = "INR" } = req.body;
 
   try {
     const ebook = await EBook.findById(ebook_id);
@@ -144,28 +150,75 @@ const createEbookCheckout = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "usd",
-            product_data: { name: ebook.title },
-            unit_amount: inrToUsdCents(ebook.price),
+            currency: "gbp",
+            product_data: { name: ebook.title, tax_code: TAX_CODES.ebook },
+            unit_amount: await inrToGbpPence(ebook.price),
           },
           quantity: 1,
         },
       ],
       mode: "payment",
-      managed_payments: { enabled: false },
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
       metadata: {
         type: "ebook",
         client_id,
         ebook_id,
+        display_currency: currency_code,
       },
     });
 
     await Payment.create({
       client_ref: client_id,
+      ebook_ref: ebook_id,
       gateway: "stripe",
       amount: ebook.price,
+      currency_code,
+      status: "pending",
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Create a Stripe checkout session for a course
+const createCourseCheckout = async (req, res) => {
+  const { client_id, course_id, currency_code = "INR" } = req.body;
+
+  try {
+    const course = await Course.findById(course_id);
+    if (!course) return res.status(404).json({ message: "Course not found" });
+
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: { name: course.title, tax_code: TAX_CODES.course },
+            unit_amount: await inrToGbpPence(course.price),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
+      metadata: {
+        type: "course",
+        client_id,
+        course_id,
+        display_currency: currency_code,
+      },
+    });
+
+    await Payment.create({
+      client_ref: client_id,
+      course_ref: course_id,
+      gateway: "stripe",
+      amount: course.price,
+      currency_code,
       status: "pending",
     });
 
@@ -177,7 +230,7 @@ const createEbookCheckout = async (req, res) => {
 
 // @desc Create a Stripe checkout session for a 1-on-1 consultation booking
 const createConsultationCheckout = async (req, res) => {
-  const { client_id, consultant_id } = req.body;
+  const { client_id, consultant_id, currency_code = "INR" } = req.body;
 
   try {
     const consultant = await Consultant.findById(consultant_id);
@@ -198,21 +251,27 @@ const createConsultationCheckout = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "usd",
-            product_data: { name: `1-on-1 Session — ${consultant.name}` },
-            unit_amount: inrToUsdCents(consultant.fee),
+            currency: "gbp",
+            product_data: {
+              name: `1-on-1 Session — ${consultant.name}`,
+            },
+            unit_amount: await inrToGbpPence(consultant.fee),
           },
           quantity: 1,
         },
       ],
       mode: "payment",
+      // A live, human-delivered 1-on-1 session is explicitly excluded from
+      // Managed Payments' "fully automated digital product" requirement.
       managed_payments: { enabled: false },
+      payment_method_types: ["card", "paypal"],
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
       metadata: {
         type: "consultation",
         client_id,
         consultant_id,
+        display_currency: currency_code,
       },
     });
 
@@ -221,6 +280,7 @@ const createConsultationCheckout = async (req, res) => {
       professional_ref: consultant_id,
       gateway: "stripe",
       amount: consultant.fee,
+      currency_code,
       commission_amount: consultant.fee * 0.15,
       status: "pending",
     });
@@ -249,6 +309,12 @@ const stripeWebhook = async (req, res) => {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
 
+    // Custom/off-menu invoice (manually created payment link)
+    if (session.metadata.type === "custom_invoice") {
+      await completeCustomInvoice(session);
+      return res.json({ received: true });
+    }
+
     // E-book purchase
     if (session.metadata.type === "ebook") {
       const { client_id, ebook_id } = session.metadata;
@@ -258,15 +324,24 @@ const stripeWebhook = async (req, res) => {
         await client.save();
 
         const payment = await Payment.findOneAndUpdate(
-          { client_ref: client_id, status: "pending" },
-          { status: "completed", amount_usd: session.amount_total / 100 },
+          { client_ref: client_id, ebook_ref: ebook_id, status: "pending" },
+          { status: "completed", amount_settled: session.amount_total / 100 },
           { new: true, sort: { createdAt: -1 } },
         );
         if (payment) {
+          payment.amount_display = await convertFromInr(
+            payment.amount,
+            payment.currency_code,
+          );
+          payment.invoice_number = await getNextInvoiceNumber();
+          await payment.save();
+
           await SalesLog.create({
             category: "ebook",
             amount: payment.amount,
-            amount_usd: payment.amount_usd,
+            amount_settled: payment.amount_settled,
+            currency_code: payment.currency_code,
+            amount_display: payment.amount_display,
             payment_ref: payment._id,
           });
 
@@ -280,6 +355,60 @@ const stripeWebhook = async (req, res) => {
                 items: [{ name: ebook?.title || "E-Book", amount: payment.amount }],
                 total: payment.amount,
                 paidAt: payment.updatedAt,
+                clientName: client.name,
+                invoiceNumber: payment.invoice_number,
+              });
+            }
+          } catch (emailErr) {
+            console.error("Failed to send receipt email:", emailErr.message);
+          }
+        }
+      }
+      return res.json({ received: true });
+    }
+
+    // Course purchase
+    if (session.metadata.type === "course") {
+      const { client_id, course_id } = session.metadata;
+      const client = await Client.findById(client_id);
+      if (client) {
+        client.purchased_courses.push(course_id);
+        await client.save();
+
+        const payment = await Payment.findOneAndUpdate(
+          { client_ref: client_id, course_ref: course_id, status: "pending" },
+          { status: "completed", amount_settled: session.amount_total / 100 },
+          { new: true, sort: { createdAt: -1 } },
+        );
+        if (payment) {
+          payment.amount_display = await convertFromInr(
+            payment.amount,
+            payment.currency_code,
+          );
+          payment.invoice_number = await getNextInvoiceNumber();
+          await payment.save();
+
+          await SalesLog.create({
+            category: "course",
+            amount: payment.amount,
+            amount_settled: payment.amount_settled,
+            currency_code: payment.currency_code,
+            amount_display: payment.amount_display,
+            payment_ref: payment._id,
+          });
+
+          try {
+            const [user, course] = await Promise.all([
+              User.findById(client.user_ref),
+              Course.findById(course_id),
+            ]);
+            if (user) {
+              await sendPaymentReceiptEmail(user.email, {
+                items: [{ name: course?.title || "Course", amount: payment.amount }],
+                total: payment.amount,
+                paidAt: payment.updatedAt,
+                clientName: client.name,
+                invoiceNumber: payment.invoice_number,
               });
             }
           } catch (emailErr) {
@@ -296,15 +425,24 @@ const stripeWebhook = async (req, res) => {
 
       const payment = await Payment.findOneAndUpdate(
         { client_ref: client_id, professional_ref: consultant_id, status: "pending" },
-        { status: "completed", amount_usd: session.amount_total / 100 },
+        { status: "completed", amount_settled: session.amount_total / 100 },
         { new: true, sort: { createdAt: -1 } },
       );
 
       if (payment) {
+        payment.amount_display = await convertFromInr(
+          payment.amount,
+          payment.currency_code,
+        );
+        payment.invoice_number = await getNextInvoiceNumber();
+        await payment.save();
+
         await SalesLog.create({
           category: "consultation",
           amount: payment.amount,
-          amount_usd: payment.amount_usd,
+          amount_settled: payment.amount_settled,
+          currency_code: payment.currency_code,
+          amount_display: payment.amount_display,
           payment_ref: payment._id,
         });
 
@@ -333,6 +471,8 @@ const stripeWebhook = async (req, res) => {
               ],
               total: payment.amount,
               paidAt: payment.updatedAt,
+              clientName: client.name,
+              invoiceNumber: payment.invoice_number,
             });
           }
         } catch (emailErr) {
@@ -342,9 +482,8 @@ const stripeWebhook = async (req, res) => {
       return res.json({ received: true });
     }
 
-    // Package purchase (Dietplan / Workout / Combo + optional Premium)
-    const { client_id, plan_ids, include_premium, coupon_code } =
-      session.metadata;
+    // Package purchase (Dietplan / Workout / Combo)
+    const { client_id, plan_ids, coupon_code } = session.metadata;
     const planIdList = plan_ids.split(",");
 
     const client = await Client.findById(client_id);
@@ -359,6 +498,10 @@ const stripeWebhook = async (req, res) => {
 
     const plans = await Plan.find({ _id: { $in: planIdList } });
     const receiptItems = [];
+    // One invoice number for the whole checkout — a combo fallback can
+    // complete as two separate Payment records (dietplan + workout), but
+    // they're one purchase and should share one invoice number.
+    const invoiceNumber = await getNextInvoiceNumber();
 
     for (const plan of plans) {
       const expiresAt = new Date();
@@ -387,45 +530,25 @@ const stripeWebhook = async (req, res) => {
         { new: true },
       );
       if (payment) {
-        payment.amount_usd = inrToUsdCents(payment.amount) / 100;
+        payment.amount_settled = (await inrToGbpPence(payment.amount)) / 100;
+        payment.amount_display = await convertFromInr(
+          payment.amount,
+          payment.currency_code,
+        );
+        payment.invoice_number = invoiceNumber;
         await payment.save();
 
         await SalesLog.create({
           category: "package",
           amount: payment.amount,
-          amount_usd: payment.amount_usd,
+          amount_settled: payment.amount_settled,
+          currency_code: payment.currency_code,
+          amount_display: payment.amount_display,
           payment_ref: payment._id,
         });
         receiptItems.push({
           name: planDisplayName(plan),
           amount: payment.amount,
-        });
-      }
-    }
-
-    if (include_premium === "true") {
-      client.has_premium = true;
-      const premiumAddon = await PremiumAddon.findOne();
-      client.premium_sessions_total += premiumAddon?.sessions_included || 1;
-
-      const premiumPayment = await Payment.findOneAndUpdate(
-        { client_ref: client_id, plan_ref: null, status: "pending" },
-        { status: "completed" },
-        { new: true, sort: { createdAt: -1 } },
-      );
-      if (premiumPayment) {
-        premiumPayment.amount_usd = inrToUsdCents(premiumPayment.amount) / 100;
-        await premiumPayment.save();
-
-        await SalesLog.create({
-          category: "package",
-          amount: premiumPayment.amount,
-          amount_usd: premiumPayment.amount_usd,
-          payment_ref: premiumPayment._id,
-        });
-        receiptItems.push({
-          name: premiumAddon?.name || "Premium Add-on",
-          amount: premiumPayment.amount,
         });
       }
     }
@@ -450,6 +573,8 @@ const stripeWebhook = async (req, res) => {
             items: receiptItems,
             total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
             paidAt: new Date(),
+            clientName: client.name,
+            invoiceNumber,
           });
         }
       } catch (emailErr) {
@@ -480,11 +605,28 @@ const getCheckoutSessionDetails = async (req, res) => {
       const ebook = await EBook.findById(session.metadata.ebook_id);
       const payment = await Payment.findOne({
         client_ref: client._id,
+        ebook_ref: session.metadata.ebook_id,
         status: "completed",
       }).sort({ updatedAt: -1 });
 
       return res.json({
         items: [{ name: ebook?.title || "E-Book", amount: payment?.amount || 0 }],
+        total: payment?.amount || 0,
+        clientName: client.name,
+        paidAt: payment?.updatedAt || new Date(),
+      });
+    }
+
+    if (session.metadata.type === "course") {
+      const course = await Course.findById(session.metadata.course_id);
+      const payment = await Payment.findOne({
+        client_ref: client._id,
+        course_ref: session.metadata.course_id,
+        status: "completed",
+      }).sort({ updatedAt: -1 });
+
+      return res.json({
+        items: [{ name: course?.title || "Course", amount: payment?.amount || 0 }],
         total: payment?.amount || 0,
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
@@ -534,21 +676,6 @@ const getCheckoutSessionDetails = async (req, res) => {
       }
     }
 
-    if (session.metadata.include_premium === "true") {
-      const premiumPayment = await Payment.findOne({
-        client_ref: client._id,
-        plan_ref: null,
-        status: "completed",
-      }).sort({ updatedAt: -1 });
-      if (premiumPayment) {
-        const premiumAddon = await PremiumAddon.findOne();
-        items.push({
-          name: premiumAddon?.name || "Premium Add-on",
-          amount: premiumPayment.amount,
-        });
-        total += premiumPayment.amount;
-      }
-    }
 
     res.json({ items, total, clientName: client.name, paidAt });
   } catch (err) {
@@ -587,6 +714,7 @@ const recordConsultationPayment = async (req, res) => {
 module.exports = {
   createStripeCheckout,
   createEbookCheckout,
+  createCourseCheckout,
   createConsultationCheckout,
   stripeWebhook,
   getCheckoutSessionDetails,

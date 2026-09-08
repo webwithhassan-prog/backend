@@ -22,12 +22,16 @@ const createBooking = async (req, res) => {
       if (!classDoc)
         return res.status(404).json({ message: "Class not found" });
 
-      const existingBookings = await Booking.countDocuments({
-        class_ref: class_id,
-        status: "booked",
-      });
-      if (existingBookings >= classDoc.capacity) {
-        return res.status(400).json({ message: "Class is full" });
+      // A null/unset capacity means unlimited (the default) — only enforce
+      // a cap when a specific session has one explicitly set.
+      if (classDoc.capacity) {
+        const existingBookings = await Booking.countDocuments({
+          class_ref: class_id,
+          status: "booked",
+        });
+        if (existingBookings >= classDoc.capacity) {
+          return res.status(400).json({ message: "Class is full" });
+        }
       }
 
       const booking = await Booking.create({

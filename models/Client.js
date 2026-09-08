@@ -52,10 +52,6 @@ const clientSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    has_premium: {
-      type: Boolean,
-      default: false,
-    },
     diet_plans_total: {
       type: Number,
       default: 0,
@@ -71,14 +67,6 @@ const clientSchema = new mongoose.Schema(
     dietplan_notification_pending: {
       type: Boolean,
       default: false,
-    },
-    premium_sessions_total: {
-      type: Number,
-      default: 0,
-    },
-    premium_sessions_used: {
-      type: Number,
-      default: 0,
     },
     last_progress_checkin: {
       type: Date,
@@ -99,6 +87,12 @@ const clientSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "EBook",
+      },
+    ],
+    purchased_courses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Course",
       },
     ],
   },

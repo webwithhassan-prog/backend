@@ -11,7 +11,6 @@ const authRoutes = require("./routes/authRoutes");
 const trainerRoutes = require("./routes/trainerRoutes");
 const consultantRoutes = require("./routes/consultantRoutes");
 const planRoutes = require("./routes/planRoutes");
-const premiumAddonRoutes = require("./routes/premiumAddonRoutes");
 const ebookRoutes = require("./routes/ebookRoutes");
 const clientRoutes = require("./routes/clientRoutes");
 const classRoutes = require("./routes/classRoutes");
@@ -34,7 +33,14 @@ const testimonialRoutes = require("./routes/testimonialRoutes");
 const demoVideoRoutes = require("./routes/demoVideoRoutes");
 const transformationVideoRoutes = require("./routes/transformationVideoRoutes");
 const currencyRoutes = require("./routes/currencyRoutes");
+const customInvoiceRoutes = require("./routes/customInvoiceRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
+const courseRoutes = require("./routes/courseRoutes");
+const recordedGalleryRoutes = require("./routes/recordedGalleryRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
+const { startClassScheduler } = require("./utils/classScheduler");
 
 const app = express();
 
@@ -42,7 +48,10 @@ const app = express();
 // instead of the real visitor IP, breaking IP-based country lookups.
 app.set("trust proxy", true);
 
-connectDB().then(startDietplanScheduler);
+connectDB().then(() => {
+  startDietplanScheduler();
+  startClassScheduler();
+});
 
 app.use(cors());
 app.use(
@@ -58,7 +67,6 @@ app.use("/api/auth", authRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/consultants", consultantRoutes);
 app.use("/api/plans", planRoutes);
-app.use("/api/premium-addon", premiumAddonRoutes);
 app.use("/api/ebooks", ebookRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/classes", classRoutes);
@@ -81,6 +89,12 @@ app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/demo-videos", demoVideoRoutes);
 app.use("/api/transformation-videos", transformationVideoRoutes);
 app.use("/api/currency", currencyRoutes);
+app.use("/api/custom-invoices", customInvoiceRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/recorded-gallery", recordedGalleryRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/hero-banners", heroBannerRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
