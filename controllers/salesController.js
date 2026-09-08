@@ -1,6 +1,7 @@
 const Payment = require('../models/Payment');
 const SalesLog = require('../models/SalesLog');
 const { inrToGbpPence } = require('../utils/currency');
+const { startOfDayPKT, startOfMonthPKT } = require('../utils/pktTime');
 
 // For records predating the amount_settled field (or any edge case where it
 // wasn't set), fall back to converting the INR amount at today's rate —
@@ -11,12 +12,12 @@ const settledAmountOf = async (doc) =>
 // @desc Total sales - daily & monthly summary
 const getSalesSummary = async (req, res) => {
   try {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    // The business operates on Pakistan time, so "today"/"this month" must
+    // be measured in PKT — server-local midnight (UTC on Render) is off by
+    // up to 5 hours and briefly counts all of the previous PKT day as
+    // "today" too.
+    const startOfDay = startOfDayPKT();
+    const startOfMonth = startOfMonthPKT();
 
     const [dailyPayments, monthlyPayments] = await Promise.all([
       Payment.find({ status: 'completed', createdAt: { $gte: startOfDay } }),

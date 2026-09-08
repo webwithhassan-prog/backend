@@ -1,6 +1,7 @@
 const Class = require('../models/Class');
 const Trainer = require('../models/Trainer');
 const { createZoomMeeting } = require('../services/zoomService');
+const { startOfDayPKT } = require('../utils/pktTime');
 
 // @desc Get all classes (public — limited fields). Defaults to upcoming-only
 // (used by the public "Join Class" picker, which shouldn't offer classes
@@ -11,8 +12,10 @@ const getPublicClasses = async (req, res) => {
   try {
     let fromDate = new Date();
     if (req.query.scope === 'today') {
-      fromDate = new Date();
-      fromDate.setHours(0, 0, 0, 0);
+      // Classes are scheduled in Pakistan time, so "today" must be start
+      // of day in PKT — server-local midnight (UTC on Render) is off by
+      // up to 5 hours and briefly pulls in all of the previous PKT day.
+      fromDate = startOfDayPKT();
     }
     const classes = await Class.find({ datetime: { $gte: fromDate } })
       .populate('trainer_ref', 'name')
