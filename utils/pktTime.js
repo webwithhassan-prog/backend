@@ -37,10 +37,20 @@ const startOfMonthPKT = (date = new Date()) => {
   return pktToDate(year, month, 1);
 };
 
+// "YYYY-MM-DD" for the given instant's PKT calendar day — for anything
+// that keys records by day (e.g. one daily-log document per client per
+// day). `date.toISOString().split("T")[0]` looks equivalent but isn't:
+// toISOString() is always UTC, which rolls over 5 hours before PKT does.
+const dateStringPKT = (date = new Date()) => {
+  const { year, month, day } = toPKTParts(date);
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
 module.exports = {
   PKT_OFFSET_HOURS,
   pktToDate,
   toPKTParts,
   startOfDayPKT,
   startOfMonthPKT,
+  dateStringPKT,
 };

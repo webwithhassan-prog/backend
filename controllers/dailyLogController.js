@@ -1,7 +1,13 @@
 const DailyLog = require("../models/DailyLog");
 const Client = require("../models/Client");
+const { dateStringPKT } = require("../utils/pktTime");
 
-const todayString = () => new Date().toISOString().split("T")[0];
+// Clients are in Pakistan, so "today" for a daily log must be the PKT
+// calendar date. toISOString() is always UTC, which rolls to the next
+// date 5 hours before PKT does — a client logging between midnight and
+// 5am PKT would have had their entry saved under yesterday's date key
+// and then "disappear" once the day actually rolled over for them.
+const todayString = () => dateStringPKT();
 
 // @desc Client — get their own log for today
 const getToday = async (req, res) => {
