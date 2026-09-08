@@ -122,7 +122,7 @@ const forgotPassword = async (req, res) => {
       .digest("hex");
 
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 30 * 60 * 1000; // 30 minutes
+    user.resetPasswordExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
     await user.save();
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
