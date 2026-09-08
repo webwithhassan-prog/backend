@@ -45,4 +45,39 @@ const createZoomMeeting = async ({ topic, startTime, duration = 60 }) => {
   };
 };
 
-module.exports = { createZoomMeeting };
+// One persistent link per Daily Time Slot, reused for every day's generated
+// class until it's rotated (weekly) — type 3 is Zoom's "recurring meeting,
+// no fixed time," which stays joinable indefinitely rather than expiring
+// after one scheduled occurrence. Same join_before_host/waiting_room
+// behavior as the one-off meetings above: someone still needs to start it
+// from the Zoom account itself, matching the existing process.
+const createRecurringMeeting = async ({ topic }) => {
+  const token = await getZoomAccessToken();
+
+  const response = await axios.post(
+    "https://api.zoom.us/v2/users/me/meetings",
+    {
+      topic,
+      type: 3,
+      settings: { join_before_host: false, waiting_room: true },
+    },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return {
+    meeting_id: response.data.id,
+    join_url: response.data.join_url,
+  };
+};
+
+// Deletes a meeting outright (used when rotating a slot's link) so a
+// leaked or forwarded old link actually stops working, rather than just
+// being superseded by a new one.
+const deleteZoomMeeting = async (meetingId) => {
+  const token = await getZoomAccessToken();
+  await axios.delete(`https://api.zoom.us/v2/meetings/${meetingId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+module.exports = { createZoomMeeting, createRecurringMeeting, deleteZoomMeeting };

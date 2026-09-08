@@ -54,8 +54,16 @@ const runRegeneration = async () => {
       });
 
       if (existing) {
-        if (existing.type !== type) {
+        // Keep the class's zoom link in sync with its slot's current one —
+        // this is how a weekly rotation actually reaches classes that were
+        // already generated before the rotation happened.
+        const zoomChanged =
+          existing.zoom_meeting_id !== slot.zoom_meeting_id ||
+          existing.zoom_join_url !== slot.zoom_join_url;
+        if (existing.type !== type || zoomChanged) {
           existing.type = type;
+          existing.zoom_meeting_id = slot.zoom_meeting_id;
+          existing.zoom_join_url = slot.zoom_join_url;
           await existing.save();
           updated++;
         }
@@ -64,6 +72,8 @@ const runRegeneration = async () => {
           trainer_ref: slot.trainer_ref,
           type,
           datetime,
+          zoom_meeting_id: slot.zoom_meeting_id,
+          zoom_join_url: slot.zoom_join_url,
         });
         created++;
       }

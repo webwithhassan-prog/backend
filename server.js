@@ -41,6 +41,7 @@ const reviewRoutes = require("./routes/reviewRoutes");
 const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
+const { startZoomRotationScheduler } = require("./utils/zoomLinkRotation");
 
 const app = express();
 
@@ -50,6 +51,10 @@ app.set("trust proxy", true);
 
 connectDB().then(() => {
   startDietplanScheduler();
+  // Zoom link rotation runs first — the class scheduler copies each slot's
+  // current link onto that day's generated classes, so slots should have
+  // a link (or already be mid-rotation) before regeneration reads them.
+  startZoomRotationScheduler();
   startClassScheduler();
 });
 
