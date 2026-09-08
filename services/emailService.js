@@ -1,53 +1,27 @@
-const nodemailer = require("nodemailer");
-const dns = require("dns");
+// Render blocks outbound raw SMTP connections outright (confirmed live:
+// connecting to smtp.gmail.com:587 times out every time in production,
+// while the exact same code sends instantly from a normal machine — no
+// amount of IPv4/timeout tuning fixes a blocked port). Resend's API sends
+// over plain HTTPS instead of an SMTP socket, which sidesteps that
+// restriction entirely. `RESEND_FROM` lets a verified custom domain replace
+// the sandbox sender once one's set up in the Resend dashboard; until then
+// the sandbox address only actually delivers to the account's own signup
+// email, though the API call itself still succeeds for any recipient.
+const RESEND_FROM = process.env.RESEND_FROM || "Fitness Zone <onboarding@resend.dev>";
 
-// A bare `family: 4` on createTransport doesn't reliably stop nodemailer's
-// own connection logic from resolving Gmail's SMTP host to an IPv6 address
-// first — confirmed live: Render can't route outbound IPv6 at all, so that
-// attempt hangs (no timeout was set) and eventually fails with ENETUNREACH,
-// which is exactly what blocked forgot-password requests for minutes before
-// erroring. Resolving to a real IPv4 address ourselves and connecting
-// directly to it sidesteps nodemailer's resolution entirely; `tls.servername`
-// keeps certificate validation working against the real hostname despite
-// connecting via a bare IP. Re-resolved periodically in case Gmail's IPs
-// rotate during a long-running process.
-const TRANSPORTER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-let cachedTransporter = null;
-let cachedAt = 0;
-
-const getTransporter = async () => {
-  if (cachedTransporter && Date.now() - cachedAt < TRANSPORTER_TTL_MS) {
-    return cachedTransporter;
-  }
-
-  let host = process.env.EMAIL_HOST;
-  try {
-    const { address } = await dns.promises.lookup(process.env.EMAIL_HOST, {
-      family: 4,
-    });
-    host = address;
-  } catch (err) {
-    // Fall back to the hostname — worst case we're back to relying on
-    // Node's global ipv4first DNS ordering (set in server.js).
-  }
-
-  cachedTransporter = nodemailer.createTransport({
-    host,
-    port: Number(process.env.EMAIL_PORT),
-    secure: false, // true for port 465, false for 587
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+const sendEmail = async ({ to, subject, html }) => {
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
     },
-    tls: { servername: process.env.EMAIL_HOST },
-    // A stuck connection now fails within 10s instead of hanging for
-    // minutes — nothing here is worth blocking a user-facing request on.
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
+    body: JSON.stringify({ from: RESEND_FROM, to, subject, html }),
   });
-  cachedAt = Date.now();
-  return cachedTransporter;
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Resend API error (${res.status}): ${errBody}`);
+  }
 };
 
 const BRAND_BLUE = "#12224A";
@@ -151,9 +125,7 @@ const sendPasswordResetEmail = async (toEmail, resetUrl) => {
     </div>
   `;
 
-  const transporter = await getTransporter();
-  await transporter.sendMail({
-    from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
+  await sendEmail({
     to: toEmail,
     subject: "Reset your Fitness Zone password",
     html: wrapEmail(body),
@@ -219,9 +191,7 @@ const sendPaymentReceiptEmail = async (
     </p>
   `;
 
-  const transporter = await getTransporter();
-  await transporter.sendMail({
-    from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
+  await sendEmail({
     to: toEmail,
     subject: "Your Fitness Zone payment receipt",
     html: wrapEmail(body),
