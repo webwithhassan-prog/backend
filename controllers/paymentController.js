@@ -623,6 +623,7 @@ const getCheckoutSessionDetails = async (req, res) => {
         total: payment?.amount || 0,
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
+        invoiceNumber: payment?.invoice_number,
       });
     }
 
@@ -639,6 +640,7 @@ const getCheckoutSessionDetails = async (req, res) => {
         total: payment?.amount || 0,
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
+        invoiceNumber: payment?.invoice_number,
       });
     }
 
@@ -660,6 +662,7 @@ const getCheckoutSessionDetails = async (req, res) => {
         total: payment?.amount || 0,
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
+        invoiceNumber: payment?.invoice_number,
       });
     }
 
@@ -668,6 +671,7 @@ const getCheckoutSessionDetails = async (req, res) => {
     const items = [];
     let total = 0;
     let paidAt = new Date();
+    let invoiceNumber;
 
     for (const plan of plans) {
       const payment = await Payment.findOne({
@@ -682,11 +686,11 @@ const getCheckoutSessionDetails = async (req, res) => {
         });
         total += payment.amount;
         paidAt = payment.updatedAt;
+        invoiceNumber = payment.invoice_number;
       }
     }
 
-
-    res.json({ items, total, clientName: client.name, paidAt });
+    res.json({ items, total, clientName: client.name, paidAt, invoiceNumber });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
