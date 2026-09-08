@@ -7,11 +7,17 @@ const getOrCreateSettings = async () => {
   return settings;
 };
 
-// @desc Public — every page that renders a WhatsApp link needs this
+// @desc Public — every page that renders a WhatsApp link needs this.
+// Deliberately returns only the WhatsApp fields — this document also
+// holds the shared class Zoom link (see utils/zoomLinkRotation.js), which
+// must never be exposed on a public, unauthenticated endpoint.
 const getSettings = async (req, res) => {
   try {
     const settings = await getOrCreateSettings();
-    res.json(settings);
+    res.json({
+      whatsapp_general: settings.whatsapp_general,
+      whatsapp_dietician: settings.whatsapp_dietician,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -36,4 +42,4 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings };
+module.exports = { getSettings, updateSettings, getOrCreateSettings };

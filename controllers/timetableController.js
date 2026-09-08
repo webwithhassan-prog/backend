@@ -2,6 +2,7 @@ const DayPlan = require("../models/DayPlan");
 const TimeSlot = require("../models/TimeSlot");
 const Class = require("../models/Class");
 const { PKT_OFFSET_HOURS, pktToDate, toPKTParts } = require("../utils/pktTime");
+const { getOrCreateSettings, rotateZoomLink } = require("../utils/zoomLinkRotation");
 
 // TimeSlot.hour/minute are entered by the admin as Pakistan time — see the
 // "Time is in Pakistan time" hint on the admin form. `new Date(year,
@@ -30,6 +31,11 @@ const runRegeneration = async () => {
   const dayPlanMap = {};
   dayPlans.forEach((p) => (dayPlanMap[p.day_of_week] = p.type));
 
+  // One shared Zoom link for every class — see utils/zoomLinkRotation.js.
+  const settings = await getOrCreateSettings();
+  const zoomMeetingId = settings.zoom_meeting_id;
+  const zoomJoinUrl = settings.zoom_join_url;
+
   // "Today" and its day-of-week must be read in PKT too — otherwise the
   // roughly 5-hour window around the PKT day boundary (19:00-23:59 UTC)
   // picks yesterday's or tomorrow's weekly-plan type instead of the
@@ -54,16 +60,16 @@ const runRegeneration = async () => {
       });
 
       if (existing) {
-        // Keep the class's zoom link in sync with its slot's current one —
+        // Keep the class's zoom link in sync with the current shared one —
         // this is how a weekly rotation actually reaches classes that were
         // already generated before the rotation happened.
         const zoomChanged =
-          existing.zoom_meeting_id !== slot.zoom_meeting_id ||
-          existing.zoom_join_url !== slot.zoom_join_url;
+          existing.zoom_meeting_id !== zoomMeetingId ||
+          existing.zoom_join_url !== zoomJoinUrl;
         if (existing.type !== type || zoomChanged) {
           existing.type = type;
-          existing.zoom_meeting_id = slot.zoom_meeting_id;
-          existing.zoom_join_url = slot.zoom_join_url;
+          existing.zoom_meeting_id = zoomMeetingId;
+          existing.zoom_join_url = zoomJoinUrl;
           await existing.save();
           updated++;
         }
@@ -72,8 +78,8 @@ const runRegeneration = async () => {
           trainer_ref: slot.trainer_ref,
           type,
           datetime,
-          zoom_meeting_id: slot.zoom_meeting_id,
-          zoom_join_url: slot.zoom_join_url,
+          zoom_meeting_id: zoomMeetingId,
+          zoom_join_url: zoomJoinUrl,
         });
         created++;
       }
@@ -119,4 +125,38 @@ const regenerateSchedule = async (req, res) => {
   }
 };
 
-module.exports = { regenerateSchedule, runRegeneration };
+// @desc Admin — the one shared Zoom link used for every class
+const getZoomLink = async (req, res) => {
+  try {
+    const settings = await getOrCreateSettings();
+    res.json({
+      zoom_join_url: settings.zoom_join_url || null,
+      zoom_rotated_at: settings.zoom_rotated_at || null,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Admin — rotate the shared Zoom link right now (in addition to the
+// automatic weekly check), and immediately push it onto upcoming classes
+// rather than waiting for the next scheduled regeneration
+const rotateZoomLinkNow = async (req, res) => {
+  try {
+    const settings = await rotateZoomLink();
+    await runRegeneration();
+    res.json({
+      zoom_join_url: settings.zoom_join_url,
+      zoom_rotated_at: settings.zoom_rotated_at,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = {
+  regenerateSchedule,
+  runRegeneration,
+  getZoomLink,
+  rotateZoomLinkNow,
+};

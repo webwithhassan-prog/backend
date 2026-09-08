@@ -13,6 +13,18 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: "919220447415",
     },
+    // One shared Zoom link for every class, regardless of trainer or time —
+    // matches the existing admin-shares-one-link-to-the-trainers-group
+    // process. Rotated weekly (see utils/zoomLinkRotation.js).
+    zoom_meeting_id: {
+      type: String,
+    },
+    zoom_join_url: {
+      type: String,
+    },
+    zoom_rotated_at: {
+      type: Date,
+    },
   },
   { timestamps: true },
 );

@@ -19,17 +19,6 @@ const timeSlotSchema = new mongoose.Schema(
       min: 0,
       max: 59,
     },
-    // One persistent Zoom link per slot, reused across every day's
-    // generated class and rotated weekly (see utils/zoomLinkRotation.js).
-    zoom_meeting_id: {
-      type: String,
-    },
-    zoom_join_url: {
-      type: String,
-    },
-    zoom_rotated_at: {
-      type: Date,
-    },
   },
   { timestamps: true }
 );
