@@ -1,5 +1,3 @@
-const { generateReceiptCode } = require("../utils/receiptVerification");
-
 // Render blocks outbound raw SMTP connections outright (confirmed live:
 // connecting to smtp.gmail.com:587 times out every time in production,
 // while the exact same code sends instantly from a normal machine — no
@@ -148,13 +146,6 @@ const sendPaymentReceiptEmail = async (
   toEmail,
   { items, total, paidAt, clientName, invoiceNumber },
 ) => {
-  // Only meaningful once there's a stable invoice number to anchor it to —
-  // older code paths that don't pass one just skip showing a code rather
-  // than displaying one that can't be tied to anything.
-  const verificationCode = invoiceNumber
-    ? generateReceiptCode({ invoiceNumber, total, paidAt, clientEmail: toEmail })
-    : null;
-
   const rows = items
     .map(
       (item, i) => `
@@ -201,24 +192,6 @@ const sendPaymentReceiptEmail = async (
         </td>
       </tr>
     </table>
-
-    ${
-      verificationCode
-        ? `
-    <div style="background:${BRAND_BLUE_PALE}; border-radius:10px; padding:12px 18px; margin-bottom:8px; text-align:center;">
-      <p style="margin:0 0 2px; color:#8b93a7; font-size:11px; text-transform:uppercase; letter-spacing:0.4px;">
-        Verification Code
-      </p>
-      <p style="margin:0; color:${BRAND_BLUE}; font-size:15px; font-weight:800; letter-spacing:1px;">
-        ${verificationCode}
-      </p>
-    </div>
-    <p style="margin:0 0 24px; color:#8b93a7; font-size:11.5px; text-align:center; line-height:1.5;">
-      This code confirms this receipt hasn't been altered — quote it along
-      with your invoice number if we ever need to verify this payment.
-    </p>`
-        : ""
-    }
 
     ${ctaButton("View in Your Profile", `${process.env.CLIENT_URL}/client`)}
 
