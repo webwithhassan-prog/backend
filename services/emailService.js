@@ -1,18 +1,54 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: false, // true for port 465, false for 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // Force IPv4 — some hosts (e.g. Render) can't route outbound IPv6, and
-  // Node resolves Gmail's SMTP host to an IPv6 address first, causing
-  // ENETUNREACH. This forces the IPv4 route instead.
-  family: 4,
-});
+// A bare `family: 4` on createTransport doesn't reliably stop nodemailer's
+// own connection logic from resolving Gmail's SMTP host to an IPv6 address
+// first — confirmed live: Render can't route outbound IPv6 at all, so that
+// attempt hangs (no timeout was set) and eventually fails with ENETUNREACH,
+// which is exactly what blocked forgot-password requests for minutes before
+// erroring. Resolving to a real IPv4 address ourselves and connecting
+// directly to it sidesteps nodemailer's resolution entirely; `tls.servername`
+// keeps certificate validation working against the real hostname despite
+// connecting via a bare IP. Re-resolved periodically in case Gmail's IPs
+// rotate during a long-running process.
+const TRANSPORTER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+let cachedTransporter = null;
+let cachedAt = 0;
+
+const getTransporter = async () => {
+  if (cachedTransporter && Date.now() - cachedAt < TRANSPORTER_TTL_MS) {
+    return cachedTransporter;
+  }
+
+  let host = process.env.EMAIL_HOST;
+  try {
+    const { address } = await dns.promises.lookup(process.env.EMAIL_HOST, {
+      family: 4,
+    });
+    host = address;
+  } catch (err) {
+    // Fall back to the hostname — worst case we're back to relying on
+    // Node's global ipv4first DNS ordering (set in server.js).
+  }
+
+  cachedTransporter = nodemailer.createTransport({
+    host,
+    port: Number(process.env.EMAIL_PORT),
+    secure: false, // true for port 465, false for 587
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: { servername: process.env.EMAIL_HOST },
+    // A stuck connection now fails within 10s instead of hanging for
+    // minutes — nothing here is worth blocking a user-facing request on.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+  });
+  cachedAt = Date.now();
+  return cachedTransporter;
+};
 
 const BRAND_BLUE = "#12224A";
 const BRAND_BLUE_PALE = "#EAF1FF";
@@ -115,6 +151,7 @@ const sendPasswordResetEmail = async (toEmail, resetUrl) => {
     </div>
   `;
 
+  const transporter = await getTransporter();
   await transporter.sendMail({
     from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
     to: toEmail,
@@ -182,6 +219,7 @@ const sendPaymentReceiptEmail = async (
     </p>
   `;
 
+  const transporter = await getTransporter();
   await transporter.sendMail({
     from: `"Fitness Zone" <${process.env.EMAIL_USER}>`,
     to: toEmail,

@@ -65,12 +65,31 @@ const joinViaClass = async (req, res) => {
   }
 };
 
+const normalizeDigits = (str) => (str || "").replace(/\D/g, "");
+
+// Numbers saved before the country-code picker existed have no "+<dial>"
+// prefix; numbers saved after it always do. An exact-string match would
+// silently break lookup for every pre-existing client, so this compares by
+// trailing digits instead — whichever number is shorter just needs to match
+// the end of the longer one, covering a country code present on only one
+// side. The length floor keeps a handful of stray digits from matching by
+// coincidence; real phone numbers are always well past it.
+const phoneNumbersMatch = (a, b) => {
+  const na = normalizeDigits(a);
+  const nb = normalizeDigits(b);
+  if (na.length < 7 || nb.length < 7) return false;
+  return na.endsWith(nb) || nb.endsWith(na);
+};
+
 // @desc Access via name + number lookup (no login required)
 const joinViaLookup = async (req, res) => {
   const { name, phone_number, class_id, consultation_id } = req.body;
 
   try {
-    const client = await Client.findOne({ phone_number, name });
+    const candidates = await Client.find({ name });
+    const client = candidates.find((c) =>
+      phoneNumbersMatch(c.phone_number, phone_number),
+    );
     if (!client) {
       return res.status(404).json({ message: "No matching client found" });
     }

@@ -126,7 +126,13 @@ const forgotPassword = async (req, res) => {
     await user.save();
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
-    await sendPasswordResetEmail(user.email, resetUrl);
+    // Not awaited — the response is identical either way (never reveals
+    // whether the send actually succeeded, by design), so there's no reason
+    // to make the request wait on the SMTP round-trip. A slow/failing mail
+    // server used to hang this endpoint for minutes before erroring out.
+    sendPasswordResetEmail(user.email, resetUrl).catch((err) =>
+      console.error("Failed to send password reset email:", err.message),
+    );
 
     res.json({ message: "If that email exists, a reset link has been sent." });
   } catch (err) {
