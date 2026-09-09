@@ -16,14 +16,7 @@ const applicationSchema = new mongoose.Schema(
     },
     specialty: {
       type: String,
-      enum: [
-        "dietician",
-        "gynecologist",
-        "psychiatrist",
-        "physiotherapist",
-        "personal_trainer",
-        "other",
-      ],
+      trim: true,
       required: true,
     },
     years_experience: {

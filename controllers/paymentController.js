@@ -7,8 +7,6 @@ const EBook = require("../models/EBook");
 const Course = require("../models/Course");
 const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
-const Consultant = require("../models/Consultant");
-const ConsultationRequest = require("../models/ConsultationRequest");
 const { sendPaymentReceiptEmail } = require("../services/emailService");
 const { inrToGbpPence } = require("../utils/currency");
 const { convertFromInr } = require("../utils/exchangeRates");
@@ -234,72 +232,6 @@ const createCourseCheckout = async (req, res) => {
   }
 };
 
-// @desc Create a Stripe checkout session for a 1-on-1 consultation booking
-const createConsultationCheckout = async (req, res) => {
-  const { client_id, consultant_id, currency_code = "INR" } = req.body;
-
-  try {
-    const consultant = await Consultant.findById(consultant_id);
-    if (!consultant)
-      return res.status(404).json({ message: "Consultant not found" });
-    if (consultant.banned) {
-      return res
-        .status(403)
-        .json({ message: "This consultant is not available for booking" });
-    }
-    if (!consultant.fee) {
-      return res
-        .status(400)
-        .json({ message: "This consultant has no session fee set yet" });
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      line_items: [
-        {
-          price_data: {
-            currency: "gbp",
-            product_data: {
-              name: `1-on-1 Session — ${consultant.name}`,
-            },
-            unit_amount: await inrToGbpPence(consultant.fee),
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "payment",
-      // A live, human-delivered 1-on-1 session is explicitly excluded from
-      // Managed Payments' "fully automated digital product" requirement.
-      //
-      // No explicit payment_method_types here on purpose — see the same
-      // note on the package checkout above: Stripe rejects the whole
-      // session if a listed type isn't activated on the account.
-      managed_payments: { enabled: false },
-      success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
-      metadata: {
-        type: "consultation",
-        client_id,
-        consultant_id,
-        display_currency: currency_code,
-      },
-    });
-
-    await Payment.create({
-      client_ref: client_id,
-      professional_ref: consultant_id,
-      gateway: "stripe",
-      amount: consultant.fee,
-      currency_code,
-      commission_amount: consultant.fee * 0.15,
-      status: "pending",
-    });
-
-    res.json({ url: session.url });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
 // @desc Stripe webhook — confirm payment, activate client's plans or unlock e-book
 const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
@@ -437,71 +369,6 @@ const stripeWebhook = async (req, res) => {
           } catch (emailErr) {
             console.error("Failed to send receipt email:", emailErr.message);
           }
-        }
-      }
-      return res.json({ received: true });
-    }
-
-    // 1-on-1 consultation booking
-    if (session.metadata.type === "consultation") {
-      const { client_id, consultant_id } = session.metadata;
-
-      const payment = await Payment.findOneAndUpdate(
-        { client_ref: client_id, professional_ref: consultant_id, status: "pending" },
-        { status: "completed", amount_settled: session.amount_total / 100 },
-        { new: true, sort: { createdAt: -1 } },
-      );
-
-      if (payment) {
-        payment.amount_display = await convertFromInr(
-          payment.amount,
-          payment.currency_code,
-        );
-        payment.invoice_number = await getNextInvoiceNumber();
-        await payment.save();
-
-        await SalesLog.create({
-          category: "consultation",
-          amount: payment.amount,
-          amount_settled: payment.amount_settled,
-          currency_code: payment.currency_code,
-          amount_display: payment.amount_display,
-          payment_ref: payment._id,
-        });
-
-        const consultant = await Consultant.findById(consultant_id);
-        if (consultant) {
-          await ConsultationRequest.create({
-            client_ref: client_id,
-            specialty: consultant.specialty,
-            preferred_consultant_ref: consultant_id,
-            status: "pending",
-            paid: true,
-            payment_ref: payment._id,
-          });
-        }
-
-        try {
-          const client = await Client.findById(client_id);
-          const user = client ? await User.findById(client.user_ref) : null;
-          if (user) {
-            await sendPaymentReceiptEmail(user.email, {
-              items: [
-                {
-                  name: `1-on-1 Session — ${consultant?.name || "Consultant"}`,
-                  amount: payment.amount,
-                  amountSettled: payment.amount_settled,
-                },
-              ],
-              total: payment.amount,
-              totalSettled: payment.amount_settled,
-              paidAt: payment.updatedAt,
-              clientName: client.name,
-              invoiceNumber: payment.invoice_number,
-            });
-          }
-        } catch (emailErr) {
-          console.error("Failed to send receipt email:", emailErr.message);
         }
       }
       return res.json({ received: true });
@@ -665,28 +532,6 @@ const getCheckoutSessionDetails = async (req, res) => {
       });
     }
 
-    if (session.metadata.type === "consultation") {
-      const consultant = await Consultant.findById(session.metadata.consultant_id);
-      const payment = await Payment.findOne({
-        client_ref: client._id,
-        professional_ref: session.metadata.consultant_id,
-        status: "completed",
-      }).sort({ updatedAt: -1 });
-
-      return res.json({
-        items: [
-          {
-            name: `1-on-1 Session — ${consultant?.name || "Consultant"}`,
-            amount: payment?.amount || 0,
-          },
-        ],
-        total: payment?.amount || 0,
-        clientName: client.name,
-        paidAt: payment?.updatedAt || new Date(),
-        invoiceNumber: payment?.invoice_number,
-      });
-    }
-
     const planIdList = session.metadata.plan_ids.split(",");
     const plans = await Plan.find({ _id: { $in: planIdList } });
     const items = [];
@@ -717,40 +562,10 @@ const getCheckoutSessionDetails = async (req, res) => {
   }
 };
 
-// @desc Record a 1-on-1 consultation payment with 15% platform commission
-const recordConsultationPayment = async (req, res) => {
-  const { client_id, professional_id, amount, gateway } = req.body;
-
-  try {
-    const commission_amount = Number(amount) * 0.15;
-
-    const payment = await Payment.create({
-      client_ref: client_id,
-      professional_ref: professional_id,
-      gateway,
-      amount,
-      commission_amount,
-      status: "completed",
-    });
-
-    await SalesLog.create({
-      category: "consultation",
-      amount: payment.amount,
-      payment_ref: payment._id,
-    });
-
-    res.status(201).json(payment);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
 module.exports = {
   createStripeCheckout,
   createEbookCheckout,
   createCourseCheckout,
-  createConsultationCheckout,
   stripeWebhook,
   getCheckoutSessionDetails,
-  recordConsultationPayment,
 };

@@ -1,5 +1,5 @@
 const Application = require("../models/Application");
-const Consultant = require("../models/Consultant");
+const Trainer = require("../models/Trainer");
 
 // @desc Submit a job application (public)
 const createApplication = async (req, res) => {
@@ -21,9 +21,9 @@ const getApplications = async (req, res) => {
   }
 };
 
-// @desc Approve an application — sets offer terms AND creates the live Consultant listing
+// @desc Approve an application — sets offer terms AND creates the live Trainer listing
 const approveApplication = async (req, res) => {
-  const { offer_terms, fee } = req.body;
+  const { offer_terms } = req.body;
 
   try {
     const application = await Application.findById(req.params.id);
@@ -34,27 +34,21 @@ const approveApplication = async (req, res) => {
     application.offer_terms = offer_terms;
     await application.save();
 
-    // Create the public Consultant listing if one doesn't already exist for this application
-    const existingConsultant = await Consultant.findOne({
+    // Create the Trainer listing if one doesn't already exist for this application
+    const existingTrainer = await Trainer.findOne({
       name: application.name,
       specialty: application.specialty,
     });
 
-    let consultant = existingConsultant;
-    if (!consultant) {
-      consultant = await Consultant.create({
+    let trainer = existingTrainer;
+    if (!trainer) {
+      trainer = await Trainer.create({
         name: application.name,
         specialty: application.specialty,
-        photo_url: application.photo_url,
-        title: application.title,
-        years_experience: application.years_experience,
-        session_duration: application.session_duration,
-        bio: application.bio,
-        fee: fee || undefined,
       });
     }
 
-    res.json({ application, consultant });
+    res.json({ application, trainer });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
