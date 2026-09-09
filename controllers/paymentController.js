@@ -361,8 +361,15 @@ const stripeWebhook = async (req, res) => {
             ]);
             if (user) {
               await sendPaymentReceiptEmail(user.email, {
-                items: [{ name: ebook?.title || "E-Book", amount: payment.amount }],
+                items: [
+                  {
+                    name: ebook?.title || "E-Book",
+                    amount: payment.amount,
+                    amountSettled: payment.amount_settled,
+                  },
+                ],
                 total: payment.amount,
+                totalSettled: payment.amount_settled,
                 paidAt: payment.updatedAt,
                 clientName: client.name,
                 invoiceNumber: payment.invoice_number,
@@ -413,8 +420,15 @@ const stripeWebhook = async (req, res) => {
             ]);
             if (user) {
               await sendPaymentReceiptEmail(user.email, {
-                items: [{ name: course?.title || "Course", amount: payment.amount }],
+                items: [
+                  {
+                    name: course?.title || "Course",
+                    amount: payment.amount,
+                    amountSettled: payment.amount_settled,
+                  },
+                ],
                 total: payment.amount,
+                totalSettled: payment.amount_settled,
                 paidAt: payment.updatedAt,
                 clientName: client.name,
                 invoiceNumber: payment.invoice_number,
@@ -476,9 +490,11 @@ const stripeWebhook = async (req, res) => {
                 {
                   name: `1-on-1 Session — ${consultant?.name || "Consultant"}`,
                   amount: payment.amount,
+                  amountSettled: payment.amount_settled,
                 },
               ],
               total: payment.amount,
+              totalSettled: payment.amount_settled,
               paidAt: payment.updatedAt,
               clientName: client.name,
               invoiceNumber: payment.invoice_number,
@@ -558,6 +574,7 @@ const stripeWebhook = async (req, res) => {
         receiptItems.push({
           name: planDisplayName(plan),
           amount: payment.amount,
+          amountSettled: payment.amount_settled,
         });
       }
     }
@@ -581,6 +598,10 @@ const stripeWebhook = async (req, res) => {
           await sendPaymentReceiptEmail(user.email, {
             items: receiptItems,
             total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
+            totalSettled: receiptItems.reduce(
+              (sum, item) => sum + (item.amountSettled || 0),
+              0,
+            ),
             paidAt: new Date(),
             clientName: client.name,
             invoiceNumber,

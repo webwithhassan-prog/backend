@@ -181,8 +181,15 @@ const completeCustomInvoice = async (session) => {
   if (invoice.client_email) {
     try {
       await sendPaymentReceiptEmail(invoice.client_email, {
-        items: [{ name: invoice.description, amount: invoice.amount }],
+        items: [
+          {
+            name: invoice.description,
+            amount: invoice.amount,
+            amountSettled: payment.amount_settled,
+          },
+        ],
         total: invoice.amount,
+        totalSettled: payment.amount_settled,
         paidAt: invoice.paid_at,
         clientName: invoice.client_name,
         invoiceNumber: invoice.invoice_number,

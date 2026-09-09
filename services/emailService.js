@@ -142,9 +142,18 @@ const sendPasswordResetEmail = async (toEmail, resetUrl) => {
   });
 };
 
+// Formats an item/total for display: the settled GBP amount actually
+// charged to the card when available (matching the customer's bank
+// statement), falling back to the internal INR reference amount for any
+// caller that hasn't been updated to pass amount_settled yet.
+const formatCharged = (amount, amountSettled) =>
+  amountSettled != null
+    ? `£${amountSettled.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `₹${amount.toLocaleString("en-IN")}`;
+
 const sendPaymentReceiptEmail = async (
   toEmail,
-  { items, total, paidAt, clientName, invoiceNumber },
+  { items, total, totalSettled, paidAt, clientName, invoiceNumber },
 ) => {
   const rows = items
     .map(
@@ -154,7 +163,7 @@ const sendPaymentReceiptEmail = async (
             ${item.name}
           </td>
           <td style="padding:12px 0; border-bottom:1px solid #eef2fa; color:${BRAND_BLUE}; font-size:14px; text-align:right; white-space:nowrap; ${i === 0 ? "padding-top:0;" : ""}">
-            ₹${item.amount.toLocaleString("en-IN")}
+            ${formatCharged(item.amount, item.amountSettled)}
           </td>
         </tr>`,
     )
@@ -188,7 +197,7 @@ const sendPaymentReceiptEmail = async (
           Total
         </td>
         <td style="padding:16px 0 0; color:${BRAND_BLUE}; font-size:15px; font-weight:800; text-align:right;">
-          ₹${total.toLocaleString("en-IN")}
+          ${formatCharged(total, totalSettled)}
         </td>
       </tr>
     </table>
