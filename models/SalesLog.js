@@ -9,7 +9,7 @@ const salesLogSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ["plan", "consultation", "package", "ebook", "course", "custom"],
+      enum: ["plan", "package", "ebook", "course", "custom"],
       required: true,
     },
     amount: {

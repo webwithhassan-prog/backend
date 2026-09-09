@@ -20,7 +20,7 @@ const getNextSequence = async (name) => {
 };
 
 // One shared, gapless sequence for every kind of sale (custom invoices,
-// packages, e-books, courses, consultations) — real invoice numbers, so two
+// packages, e-books, courses) — real invoice numbers, so two
 // receipts can never show the same one.
 const getNextInvoiceNumber = async () => {
   const seq = await getNextSequence("invoice");

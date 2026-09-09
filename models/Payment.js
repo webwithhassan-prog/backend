@@ -58,15 +58,6 @@ const paymentSchema = new mongoose.Schema(
     invoice_number: {
       type: String,
     },
-    // Historical only — 1-on-1 consultations (15% platform commission) are
-    // discontinued; kept so past Payment records stay fully populated.
-    professional_ref: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Consultant",
-    },
-    commission_amount: {
-      type: Number,
-    },
     coupon_code: {
       type: String,
     },

@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const User = require("./models/User");
 const Client = require("./models/Client");
 const Trainer = require("./models/Trainer");
-const Consultant = require("./models/Consultant");
 const Plan = require("./models/Plan");
 const Class = require("./models/Class");
 const EBook = require("./models/EBook");
@@ -63,20 +62,6 @@ const seedAll = async () => {
         console.log(`Trainer created: ${name}`);
       }
       trainers.push(trainer);
-    }
-
-    // 4. Consultants (one per specialty)
-    const consultantData = [
-      { name: "Dr. Ayesha Raza", specialty: "dietician" },
-      { name: "Dr. Hina Farooq", specialty: "gynecologist" },
-      { name: "Dr. Bilal Ahmed", specialty: "psychiatrist" },
-    ];
-    for (const c of consultantData) {
-      const exists = await Consultant.findOne({ name: c.name });
-      if (!exists) {
-        await Consultant.create(c);
-        console.log(`Consultant created: ${c.name} (${c.specialty})`);
-      }
     }
 
     // 5. Plans (6: dietplan/workout x 30/90/180)
