@@ -1,14 +1,13 @@
 const Booking = require("../models/Booking");
 const Client = require("../models/Client");
 const Class = require("../models/Class");
-const Consultation = require("../models/Consultation");
 
 // @desc Logged-in client joins via booking ID (protected redirect)
 const joinViaBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.bookingId)
-      .populate("class_ref")
-      .populate("consultation_ref");
+    const booking = await Booking.findById(req.params.bookingId).populate(
+      "class_ref",
+    );
 
     if (!booking) return res.status(404).send("Booking not found");
     if (
@@ -26,7 +25,7 @@ const joinViaBooking = async (req, res) => {
       return res.status(403).send("Subscription not active");
     }
 
-    const session = booking.class_ref || booking.consultation_ref;
+    const session = booking.class_ref;
     if (!session || !session.zoom_join_url) {
       return res.status(404).send("Zoom link not available");
     }
@@ -83,7 +82,7 @@ const phoneNumbersMatch = (a, b) => {
 
 // @desc Access via name + number lookup (no login required)
 const joinViaLookup = async (req, res) => {
-  const { name, phone_number, class_id, consultation_id } = req.body;
+  const { name, phone_number, class_id } = req.body;
 
   try {
     const candidates = await Client.find({ name });
@@ -97,13 +96,7 @@ const joinViaLookup = async (req, res) => {
       return res.status(403).json({ message: "Subscription not active" });
     }
 
-    let session;
-    if (class_id) {
-      session = await Class.findById(class_id);
-    } else {
-      session = await Consultation.findById(consultation_id);
-    }
-
+    const session = await Class.findById(class_id);
     if (!session || !session.zoom_join_url) {
       return res.status(404).json({ message: "Zoom link not available" });
     }

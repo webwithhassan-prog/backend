@@ -11,10 +11,6 @@ const bookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Class",
     },
-    consultation_ref: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Consultation",
-    },
     status: {
       type: String,
       enum: ["booked", "cancelled", "completed"],

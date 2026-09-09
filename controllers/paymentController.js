@@ -30,10 +30,10 @@ const planDisplayName = (plan) =>
 
 // Stripe's Managed Payments requires an eligible tax code per line item, and
 // only covers "fully automated" digital products with no human delivery —
-// which rules out dietplans, live workout sessions, and 1-on-1 consultations
-// (all real human-delivered services). Only e-books and courses (pre-recorded,
-// no live instructor) genuinely qualify, so only those two run through it;
-// everything else stays on classic Checkout via managed_payments: false.
+// which rules out dietplans and live workout sessions (real human-delivered
+// services). Only e-books and courses (pre-recorded, no live instructor)
+// genuinely qualify, so only those two run through it; everything else
+// stays on classic Checkout via managed_payments: false.
 const TAX_CODES = {
   ebook: "txcd_10302000", // Digital Books - downloaded, permanent rights
   course: "txcd_20060158", // On demand Online Courses - streamed
