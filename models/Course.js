@@ -17,6 +17,10 @@ const courseSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    banner_url: {
+      type: String,
+      default: null,
+    },
     lessons: [
       {
         title: { type: String, required: true, trim: true },

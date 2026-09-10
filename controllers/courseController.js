@@ -12,6 +12,7 @@ const getPublicCourses = async (req, res) => {
         title: c.title,
         description: c.description,
         price: c.price,
+        banner_url: c.banner_url,
         lesson_count: c.lessons.length,
       })),
     );
