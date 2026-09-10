@@ -17,6 +17,8 @@ const {
   dismissDietplanNotification,
   recordProgressCheckin,
   completeOnboarding,
+  addPushSubscription,
+  removePushSubscription,
 } = require("../controllers/clientController");
 
 router.get("/", protect, adminOnly, getClients);
@@ -37,5 +39,7 @@ router.put(
 );
 router.put("/:id/progress-checkin", protect, recordProgressCheckin);
 router.put("/:id/onboarding-complete", protect, completeOnboarding);
+router.post("/:id/push-subscription", protect, addPushSubscription);
+router.delete("/:id/push-subscription", protect, removePushSubscription);
 
 module.exports = router;

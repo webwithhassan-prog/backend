@@ -303,6 +303,60 @@ const completeOnboarding = async (req, res) => {
   }
 };
 
+// @desc Client registers a browser/device for push notifications
+const addPushSubscription = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    if (client.user_ref.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    const { subscription } = req.body;
+    if (!subscription?.endpoint || !subscription?.keys) {
+      return res.status(400).json({ message: "Invalid subscription" });
+    }
+
+    const alreadySubscribed = client.push_subscriptions.some(
+      (s) => s.endpoint === subscription.endpoint,
+    );
+    if (!alreadySubscribed) {
+      client.push_subscriptions.push({
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+      });
+      await client.save();
+    }
+
+    res.json({ subscribed: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Client removes a browser/device's push subscription
+const removePushSubscription = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id);
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    if (client.user_ref.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    const { endpoint } = req.body;
+    client.push_subscriptions = client.push_subscriptions.filter(
+      (s) => s.endpoint !== endpoint,
+    );
+    await client.save();
+
+    res.json({ subscribed: false });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   getClients,
   createClient,
@@ -318,4 +372,6 @@ module.exports = {
   dismissDietplanNotification,
   recordProgressCheckin,
   completeOnboarding,
+  addPushSubscription,
+  removePushSubscription,
 };

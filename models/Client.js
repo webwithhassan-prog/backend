@@ -95,6 +95,26 @@ const clientSchema = new mongoose.Schema(
         ref: "Course",
       },
     ],
+    push_subscriptions: [
+      {
+        endpoint: { type: String, required: true },
+        keys: {
+          p256dh: { type: String, required: true },
+          auth: { type: String, required: true },
+        },
+        created_at: { type: Date, default: Date.now },
+      },
+    ],
+    last_checkin_reminder_sent_at: {
+      type: Date,
+      default: null,
+    },
+    // "YYYY-MM-DD" in PKT (via dateStringPKT()) — guards the daily class
+    // reminder from resending twice on the same PKT calendar day.
+    last_class_reminder_sent_date: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );

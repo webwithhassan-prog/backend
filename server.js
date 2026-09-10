@@ -38,6 +38,8 @@ const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
 const { startZoomRotationScheduler } = require("./utils/zoomLinkRotation");
+const { startClassReminderScheduler } = require("./utils/classReminderScheduler");
+const { startCheckinReminderScheduler } = require("./utils/checkinReminderScheduler");
 
 const app = express();
 
@@ -52,6 +54,8 @@ connectDB().then(() => {
   // a link (or already be mid-rotation) before regeneration reads them.
   startZoomRotationScheduler();
   startClassScheduler();
+  startClassReminderScheduler();
+  startCheckinReminderScheduler();
 });
 
 app.use(cors());
