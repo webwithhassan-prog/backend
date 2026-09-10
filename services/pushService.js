@@ -1,20 +1,29 @@
 const webpush = require("web-push");
 
 // web-push throws immediately (crashing the process, since this runs at
-// module load) if either key is missing — which they will be until the
-// VAPID env vars are added to Render/Vercel. Guarding this keeps deploying
-// this feature safe before that's done: push sends are silently skipped
-// (logged once) rather than taking down the whole API.
-const vapidConfigured = Boolean(
-  process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY,
-);
+// module load) if either key is missing or malformed — confirmed live: a
+// trailing newline picked up from pasting into Render's env var textarea
+// was enough to take the whole deploy down. .trim() defends against that
+// class of copy-paste corruption; the try/catch is a second line of
+// defense so a still-bad value degrades to "push disabled" instead of
+// crashing the API, no matter what's actually wrong with it.
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY?.trim();
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY?.trim();
+let vapidConfigured = false;
 
-if (vapidConfigured) {
-  webpush.setVapidDetails(
-    `mailto:${process.env.VAPID_CONTACT_EMAIL || "fitnesszoneofficial.uk26@gmail.com"}`,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY,
-  );
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(
+      `mailto:${process.env.VAPID_CONTACT_EMAIL || "fitnesszoneofficial.uk26@gmail.com"}`,
+      vapidPublicKey,
+      vapidPrivateKey,
+    );
+    vapidConfigured = true;
+  } catch (err) {
+    console.error(
+      `VAPID keys are set but invalid (${err.message}) — push notifications are disabled.`,
+    );
+  }
 } else {
   console.warn(
     "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — push notifications are disabled.",
