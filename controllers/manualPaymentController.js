@@ -8,7 +8,10 @@ const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
 const Coupon = require("../models/Coupon");
 const ManualPaymentMethod = require("../models/ManualPaymentMethod");
-const { sendPaymentReceiptEmail } = require("../services/emailService");
+const {
+  sendPaymentReceiptEmail,
+  sendManualPaymentAlertEmail,
+} = require("../services/emailService");
 const { convertFromInr } = require("../utils/exchangeRates");
 const { getNextInvoiceNumber } = require("../models/Counter");
 const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
@@ -25,6 +28,16 @@ const PLAN_TYPE_LABELS = {
 };
 const planDisplayName = (plan) =>
   `${PLAN_TYPE_LABELS[plan.product_type] || plan.product_type} - ${plan.duration_days} Days`;
+
+// Best-effort — a failed alert email should never block the client's
+// submission from going through, same as every other email in this app.
+const notifyAdmin = async (details) => {
+  try {
+    await sendManualPaymentAlertEmail(details);
+  } catch (emailErr) {
+    console.error("Failed to send manual payment alert email:", emailErr.message);
+  }
+};
 
 // @desc Client declares they've sent a manual (bank/JazzCash/Easypaisa)
 // payment — creates pending Payment record(s) exactly like a Stripe
@@ -47,6 +60,9 @@ const initiateManualPayment = async (req, res) => {
     if (!method) {
       return res.status(400).json({ message: "Invalid payment method" });
     }
+    const client = await Client.findById(client_id);
+    const clientName = client?.name || "Unknown client";
+
     if (type === "package") {
       if (!plan_ids || plan_ids.length === 0) {
         return res.status(400).json({ message: "At least one plan is required" });
@@ -89,6 +105,15 @@ const initiateManualPayment = async (req, res) => {
           }),
         );
       }
+      const totalAmount = created.reduce((sum, p) => sum + p.amount, 0);
+      const itemLabel = plans.map(planDisplayName).join(", ");
+      await notifyAdmin({
+        clientName,
+        itemLabel,
+        amount: totalAmount,
+        currencyCode: currency_code,
+        methodName: method.name,
+      });
       return res.json({ ok: true, payment_ids: created.map((p) => p._id) });
     }
 
@@ -104,6 +129,13 @@ const initiateManualPayment = async (req, res) => {
         amount: ebook.price,
         currency_code,
         status: "pending",
+      });
+      await notifyAdmin({
+        clientName,
+        itemLabel: ebook.title,
+        amount: payment.amount,
+        currencyCode: currency_code,
+        methodName: method.name,
       });
       return res.json({ ok: true, payment_ids: [payment._id] });
     }
@@ -121,10 +153,57 @@ const initiateManualPayment = async (req, res) => {
         currency_code,
         status: "pending",
       });
+      await notifyAdmin({
+        clientName,
+        itemLabel: course.title,
+        amount: payment.amount,
+        currencyCode: currency_code,
+        methodName: method.name,
+      });
       return res.json({ ok: true, payment_ids: [payment._id] });
     }
 
     return res.status(400).json({ message: "Invalid purchase type" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Client — their own pending manual payment claims, so they can see
+// "still waiting on verification" in their Profile instead of wondering
+// whether their submission was even received.
+const getMyPendingManualPayments = async (req, res) => {
+  try {
+    const client = await Client.findOne({ user_ref: req.user._id });
+    if (!client) return res.json([]);
+
+    const payments = await Payment.find({
+      client_ref: client._id,
+      gateway: "manual",
+      status: "pending",
+    })
+      .sort({ createdAt: -1 })
+      .populate("plan_ref", "product_type duration_days")
+      .populate("ebook_ref", "title")
+      .populate("course_ref", "title");
+
+    const items = payments.map((p) => {
+      let itemLabel = "Unknown item";
+      if (p.plan_ref) itemLabel = planDisplayName(p.plan_ref);
+      else if (p.ebook_ref) itemLabel = p.ebook_ref.title;
+      else if (p.course_ref) itemLabel = p.course_ref.title;
+
+      return {
+        _id: p._id,
+        item_label: itemLabel,
+        amount: p.amount,
+        currency_code: p.currency_code,
+        method_name: p.manual_method_name,
+        created_at: p.createdAt,
+      };
+    });
+
+    res.json(items);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -400,6 +479,7 @@ const rejectManualPayment = async (req, res) => {
 
 module.exports = {
   initiateManualPayment,
+  getMyPendingManualPayments,
   listPendingManualPayments,
   confirmManualPayment,
   rejectManualPayment,

@@ -217,4 +217,57 @@ const sendPaymentReceiptEmail = async (
   });
 };
 
-module.exports = { sendPasswordResetEmail, sendPaymentReceiptEmail };
+// Sent to the monitored inbox (not the admin login email, which may not be
+// actively checked) the moment a client submits a manual (bank/JazzCash/
+// Easypaisa) payment claim — closes the gap where nothing surfaced a new
+// submission until someone thought to check the admin Manual Payments page.
+const sendManualPaymentAlertEmail = async ({
+  clientName,
+  itemLabel,
+  amount,
+  currencyCode,
+  methodName,
+}) => {
+  const body = `
+    ${iconCircle("💳", BRAND_BLUE_PALE)}
+    <h1 style="margin:0 0 8px; color:${BRAND_BLUE}; font-size:22px; font-weight:800; text-align:center;">
+      New manual payment to verify
+    </h1>
+    <p style="margin:0 0 26px; color:#8b93a7; font-size:13.5px; text-align:center;">
+      A client says they've paid — check the account and confirm or reject.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eef2fa; border-radius:12px; padding:20px 22px; margin-bottom:8px;">
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Client</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; font-weight:700; text-align:right;">${clientName}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Item</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; text-align:right;">${itemLabel}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Amount</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; text-align:right;">${currencyCode} ${amount.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Method</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; font-weight:700; text-align:right;">${methodName}</td>
+      </tr>
+    </table>
+
+    ${ctaButton("Review in Admin", `${process.env.CLIENT_URL}/admin/manual-payments`)}
+  `;
+
+  await sendEmail({
+    to: REPLY_TO,
+    subject: `New manual payment — ${clientName} (${currencyCode} ${amount.toLocaleString()})`,
+    html: wrapEmail(body),
+  });
+};
+
+module.exports = {
+  sendPasswordResetEmail,
+  sendPaymentReceiptEmail,
+  sendManualPaymentAlertEmail,
+};

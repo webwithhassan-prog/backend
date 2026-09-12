@@ -11,6 +11,7 @@ const {
 } = require('../controllers/paymentController');
 const {
   initiateManualPayment,
+  getMyPendingManualPayments,
   listPendingManualPayments,
   confirmManualPayment,
   rejectManualPayment,
@@ -22,6 +23,7 @@ router.post('/stripe/course-checkout', protect, createCourseCheckout);
 router.get('/session/:sessionId', protect, getCheckoutSessionDetails);
 
 router.post('/manual/initiate', protect, initiateManualPayment);
+router.get('/manual/mine', protect, getMyPendingManualPayments);
 router.get('/manual/pending', protect, adminOnly, listPendingManualPayments);
 router.put('/manual/:id/confirm', protect, adminOnly, confirmManualPayment);
 router.put('/manual/:id/reject', protect, adminOnly, rejectManualPayment);
