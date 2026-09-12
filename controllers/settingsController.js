@@ -23,9 +23,23 @@ const getSettings = async (req, res) => {
   }
 };
 
+// @desc Admin — settings not safe to expose on the public endpoint above
+// (currently just the manual-payment alert toggle; the Zoom fields have
+// their own admin-only surface in the timetable controller).
+const getAdminSettings = async (req, res) => {
+  try {
+    const settings = await getOrCreateSettings();
+    res.json({
+      manual_payment_alerts_enabled: settings.manual_payment_alerts_enabled,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // @desc Admin — update the site's WhatsApp numbers
 const updateSettings = async (req, res) => {
-  const { whatsapp_general, whatsapp_dietician } = req.body;
+  const { whatsapp_general, whatsapp_dietician, manual_payment_alerts_enabled } = req.body;
 
   try {
     const settings = await getOrCreateSettings();
@@ -35,6 +49,9 @@ const updateSettings = async (req, res) => {
     if (whatsapp_dietician !== undefined) {
       settings.whatsapp_dietician = whatsapp_dietician.replace(/[^\d]/g, "");
     }
+    if (manual_payment_alerts_enabled !== undefined) {
+      settings.manual_payment_alerts_enabled = manual_payment_alerts_enabled;
+    }
     await settings.save();
     res.json(settings);
   } catch (err) {
@@ -42,4 +59,4 @@ const updateSettings = async (req, res) => {
   }
 };
 
-module.exports = { getSettings, updateSettings, getOrCreateSettings };
+module.exports = { getSettings, getAdminSettings, updateSettings, getOrCreateSettings };

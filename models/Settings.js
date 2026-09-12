@@ -25,6 +25,12 @@ const settingsSchema = new mongoose.Schema(
     zoom_rotated_at: {
       type: Date,
     },
+    // Lets the admin mute the "new manual payment" alert email without a
+    // deploy — the sidebar badge and Profile notice keep working either way.
+    manual_payment_alerts_enabled: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true },
 );

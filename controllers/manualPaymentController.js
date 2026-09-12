@@ -8,6 +8,8 @@ const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
 const Coupon = require("../models/Coupon");
 const ManualPaymentMethod = require("../models/ManualPaymentMethod");
+const { getOrCreateSettings } = require("./settingsController");
+const { deleteCloudinaryImage } = require("../utils/cloudinaryImages");
 const {
   sendPaymentReceiptEmail,
   sendManualPaymentAlertEmail,
@@ -31,8 +33,11 @@ const planDisplayName = (plan) =>
 
 // Best-effort — a failed alert email should never block the client's
 // submission from going through, same as every other email in this app.
+// Skips sending entirely when the admin has muted it in Settings.
 const notifyAdmin = async (details) => {
   try {
+    const settings = await getOrCreateSettings();
+    if (settings.manual_payment_alerts_enabled === false) return;
     await sendManualPaymentAlertEmail(details);
   } catch (emailErr) {
     console.error("Failed to send manual payment alert email:", emailErr.message);
@@ -53,6 +58,7 @@ const initiateManualPayment = async (req, res) => {
     coupon_code,
     method_id,
     currency_code = "INR",
+    slip_url,
   } = req.body;
 
   try {
@@ -102,6 +108,7 @@ const initiateManualPayment = async (req, res) => {
             status: "pending",
             coupon_code: coupon ? coupon.code : undefined,
             manual_batch_id: batchId,
+            slip_url: slip_url || null,
           }),
         );
       }
@@ -129,6 +136,7 @@ const initiateManualPayment = async (req, res) => {
         amount: ebook.price,
         currency_code,
         status: "pending",
+        slip_url: slip_url || null,
       });
       await notifyAdmin({
         clientName,
@@ -152,6 +160,7 @@ const initiateManualPayment = async (req, res) => {
         amount: course.price,
         currency_code,
         status: "pending",
+        slip_url: slip_url || null,
       });
       await notifyAdmin({
         clientName,
@@ -237,6 +246,7 @@ const listPendingManualPayments = async (req, res) => {
         currency_code: p.currency_code,
         method_name: p.manual_method_name,
         manual_batch_id: p.manual_batch_id,
+        slip_url: p.slip_url,
         created_at: p.createdAt,
       };
     });
@@ -317,6 +327,8 @@ const confirmManualPayment = async (req, res) => {
       client.purchased_ebooks.push(payment.ebook_ref);
       await client.save();
       const ebook = await EBook.findById(payment.ebook_ref);
+      const slipUrl = payment.slip_url;
+      payment.slip_url = null;
       await completeSingleItemPayment({
         payment,
         client,
@@ -324,6 +336,7 @@ const confirmManualPayment = async (req, res) => {
         itemDoc: ebook,
         adminId: req.user._id,
       });
+      await deleteCloudinaryImage(slipUrl);
       return res.json({ message: "Payment confirmed and e-book granted" });
     }
 
@@ -331,6 +344,8 @@ const confirmManualPayment = async (req, res) => {
       client.purchased_courses.push(payment.course_ref);
       await client.save();
       const course = await Course.findById(payment.course_ref);
+      const slipUrl = payment.slip_url;
+      payment.slip_url = null;
       await completeSingleItemPayment({
         payment,
         client,
@@ -338,6 +353,7 @@ const confirmManualPayment = async (req, res) => {
         itemDoc: course,
         adminId: req.user._id,
       });
+      await deleteCloudinaryImage(slipUrl);
       return res.json({ message: "Payment confirmed and course granted" });
     }
 
@@ -386,13 +402,16 @@ const confirmManualPayment = async (req, res) => {
           client.has_workout = true;
         }
 
+        const slipUrl = p.slip_url;
         p.status = "completed";
         p.amount_settled = p.amount;
         p.amount_display = await convertFromInr(p.amount, p.currency_code);
         p.invoice_number = invoiceNumber;
         p.verified_by = req.user._id;
         p.verified_at = new Date();
+        p.slip_url = null;
         await p.save();
+        await deleteCloudinaryImage(slipUrl);
 
         await SalesLog.create({
           category: "package",
@@ -465,11 +484,17 @@ const rejectManualPayment = async (req, res) => {
       ? { manual_batch_id: payment.manual_batch_id, status: "pending" }
       : { _id: payment._id };
 
+    const batchPayments = await Payment.find(filter, "slip_url");
+    const slipUrls = [...new Set(batchPayments.map((p) => p.slip_url).filter(Boolean))];
+
     await Payment.updateMany(filter, {
       status: "failed",
       verified_by: req.user._id,
       verified_at: new Date(),
+      slip_url: null,
     });
+
+    await Promise.all(slipUrls.map((url) => deleteCloudinaryImage(url)));
 
     res.json({ message: "Payment rejected" });
   } catch (err) {

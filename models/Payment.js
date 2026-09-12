@@ -97,6 +97,15 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Client-uploaded screenshot of the transfer, for a manual payment only.
+    // Cleared (and the underlying Cloudinary asset deleted) once an admin
+    // confirms or rejects the claim — it only needs to exist long enough
+    // to be cross-checked, not stored indefinitely (see
+    // utils/cloudinaryImages.js).
+    slip_url: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );
