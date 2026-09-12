@@ -1,0 +1,17 @@
+name: Keep Render backend awake
+
+# Render's free tier sleeps the backend after 15 minutes of no traffic,
+# causing a 30-60s cold start on the next real visitor. Pinging the
+# lightweight root route (no DB query) every 10 minutes keeps it warm —
+# free, since Actions minutes are unlimited on a public repo.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend
+        run: curl -sf https://fitnesszone-backend.onrender.com/ || echo "Ping failed (Render may be redeploying) — not treated as a workflow failure"
