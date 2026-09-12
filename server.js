@@ -35,6 +35,7 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const courseRoutes = require("./routes/courseRoutes");
 const recordedGalleryRoutes = require("./routes/recordedGalleryRoutes");
 const heroBannerRoutes = require("./routes/heroBannerRoutes");
+const manualPaymentMethodRoutes = require("./routes/manualPaymentMethodRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
 const { startZoomRotationScheduler } = require("./utils/zoomLinkRotation");
@@ -96,6 +97,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/recorded-gallery", recordedGalleryRoutes);
 app.use("/api/hero-banners", heroBannerRoutes);
+app.use("/api/manual-payment-methods", manualPaymentMethodRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -20,10 +20,37 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",
     },
+    // "stripe" for the automated flow; "manual" for any bank/wallet
+    // transfer verified by hand via manual_method_ref below — new payment
+    // methods for new countries are added as ManualPaymentMethod documents
+    // from the admin panel, never by extending this enum.
     gateway: {
       type: String,
-      enum: ["stripe", "easypaisa", "jazzcash"],
+      enum: ["stripe", "manual"],
       required: true,
+    },
+    manual_method_ref: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ManualPaymentMethod",
+      default: null,
+    },
+    // Snapshot of the method's name at the time of purchase, so an old
+    // Payment record still shows what was actually chosen even if that
+    // method is later renamed or deleted from the admin panel.
+    manual_method_name: {
+      type: String,
+      default: null,
+    },
+    // Only set for a manual (non-Stripe) payment — the admin who reviewed
+    // and confirmed/rejected it via WhatsApp cross-checking, and when.
+    verified_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    verified_at: {
+      type: Date,
+      default: null,
     },
     amount: {
       type: Number,
@@ -60,6 +87,15 @@ const paymentSchema = new mongoose.Schema(
     },
     coupon_code: {
       type: String,
+    },
+    // Groups the multiple Payment docs created by one manual package
+    // purchase (a combo checkout creates one Payment per plan, same as
+    // Stripe) so an admin confirming one confirms the whole purchase
+    // together under a single invoice number. Unused for single-item
+    // (ebook/course) manual payments or any Stripe payment.
+    manual_batch_id: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true },
