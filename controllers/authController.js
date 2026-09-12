@@ -9,11 +9,21 @@ const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
+const MIN_PASSWORD_LENGTH = 6;
+const isPasswordTooShort = (password) =>
+  !password || password.length < MIN_PASSWORD_LENGTH;
+
 // @desc Register a new client
 const registerClient = async (req, res) => {
   const { email, password, name, phone_number } = req.body;
 
   try {
+    if (isPasswordTooShort(password)) {
+      return res.status(400).json({
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: "User already exists" });
@@ -93,6 +103,12 @@ const changePassword = async (req, res) => {
       return res.status(401).json({ message: "Current password is incorrect" });
     }
 
+    if (isPasswordTooShort(newPassword)) {
+      return res.status(400).json({
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+
     user.password = newPassword;
     await user.save();
 
@@ -157,6 +173,12 @@ const resetPassword = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Reset link is invalid or has expired" });
+    }
+
+    if (isPasswordTooShort(password)) {
+      return res.status(400).json({
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
     }
 
     user.password = password;
