@@ -303,9 +303,68 @@ const sendAccountSetupEmail = async (toEmail, setupUrl, itemLabel) => {
   });
 };
 
+// Sent when a Stripe payment has already gone through but granting the
+// purchase failed server-side (e.g. the guest's phone number collides with
+// a different existing account) — the customer paid and has no idea
+// anything went wrong, so this is the only way anyone finds out to fix it
+// by hand instead of it silently sitting in a server log forever.
+const sendFulfillmentFailedAlertEmail = async ({
+  email,
+  phone,
+  itemLabel,
+  reason,
+  sessionId,
+}) => {
+  const body = `
+    ${iconCircle("⚠️", "#fdeceb", "#c0392b")}
+    <h1 style="margin:0 0 8px; color:${BRAND_BLUE}; font-size:22px; font-weight:800; text-align:center;">
+      A paid order needs manual fixing
+    </h1>
+    <p style="margin:0 0 26px; color:#8b93a7; font-size:13.5px; text-align:center;">
+      Stripe already charged this customer, but their account/purchase
+      couldn't be created automatically.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eef2fa; border-radius:12px; padding:20px 22px; margin-bottom:8px;">
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Email</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; font-weight:700; text-align:right;">${email || "unknown"}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Phone</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; text-align:right;">${phone || "unknown"}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Item</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; text-align:right;">${itemLabel || "unknown"}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Reason</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; text-align:right;">${reason || "unknown"}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">Stripe session</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:12px; text-align:right; word-break:break-all;">${sessionId || "unknown"}</td>
+      </tr>
+    </table>
+
+    <p style="margin:16px 0 0; color:#495468; font-size:13px; text-align:center; line-height:1.6;">
+      Look this session up in the Stripe dashboard to confirm the charge, then
+      create/fix the client's account by hand and let them know.
+    </p>
+  `;
+
+  await sendEmail({
+    to: REPLY_TO,
+    subject: `Action needed — paid order failed to fulfill (${email || "unknown email"})`,
+    html: wrapEmail(body),
+  });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendPaymentReceiptEmail,
   sendManualPaymentAlertEmail,
   sendAccountSetupEmail,
+  sendFulfillmentFailedAlertEmail,
 };

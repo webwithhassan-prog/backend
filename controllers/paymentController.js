@@ -7,7 +7,10 @@ const EBook = require("../models/EBook");
 const Course = require("../models/Course");
 const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
-const { sendPaymentReceiptEmail } = require("../services/emailService");
+const {
+  sendPaymentReceiptEmail,
+  sendFulfillmentFailedAlertEmail,
+} = require("../services/emailService");
 const { inrToGbpPence } = require("../utils/currency");
 const { convertFromInr } = require("../utils/exchangeRates");
 const { getNextInvoiceNumber } = require("../models/Counter");
@@ -92,6 +95,18 @@ const resolveClientForSession = async (session, itemLabel) => {
     return { client, isNewAccount: isNew };
   } catch (err) {
     console.error("Failed to create guest account for checkout:", err.message);
+    // Stripe already captured this payment — the customer thinks they're
+    // done, and nothing else in this flow tells anyone it actually failed.
+    // Best-effort, same as every other email here.
+    sendFulfillmentFailedAlertEmail({
+      email,
+      phone,
+      itemLabel,
+      reason: err.message,
+      sessionId: session.id,
+    }).catch((emailErr) =>
+      console.error("Failed to send fulfillment-failed alert email:", emailErr.message),
+    );
     return null;
   }
 };

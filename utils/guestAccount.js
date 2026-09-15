@@ -43,14 +43,31 @@ const findOrCreateGuestAccount = async ({ name, phone, email, ip, itemLabel }) =
 
   const { country, country_code } = await lookupCountryFromIp(ip);
 
-  const client = await Client.create({
-    user_ref: user._id,
-    name: name || "New Client",
-    phone_number: phone,
-    status: "expired",
-    country,
-    country_code,
-  });
+  let client;
+  try {
+    client = await Client.create({
+      user_ref: user._id,
+      name: name || "New Client",
+      phone_number: phone,
+      status: "expired",
+      country,
+      country_code,
+    });
+  } catch (err) {
+    // The User above already committed — without this, a failed Client
+    // creation (e.g. this phone number already belongs to a different
+    // account) leaves a permanently orphaned User: this email can never
+    // sign up or retry again, since it always fails the existingUser check
+    // above with no Client to show for it. Roll it back so the email is
+    // free to try again.
+    await User.deleteOne({ _id: user._id });
+    if (err.code === 11000 && err.keyPattern?.phone_number) {
+      throw new Error(
+        "That phone number is already registered to a different account.",
+      );
+    }
+    throw err;
+  }
 
   const setupUrl = `${process.env.CLIENT_URL}/complete-account/${rawToken}`;
   // Best-effort, same as every other transactional email here — the
