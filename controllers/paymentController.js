@@ -19,6 +19,82 @@ const {
   validateCoupon,
   couponAppliesToType,
 } = require("../utils/couponDiscount");
+const { findOrCreateGuestAccount } = require("../utils/guestAccount");
+
+// Checkout is now reachable without login, so client_id can no longer be
+// trusted from the request body — a guest could otherwise attach their
+// purchase to any account by just guessing/copying its id. A logged-in
+// caller's own client is looked up server-side instead; a guest (no
+// req.user) gets null, and the checkout proceeds through Stripe's own
+// guest-collection fields (see guestCollectionFields below).
+const resolveOwnClientId = async (req) => {
+  if (!req.user) return null;
+  const client = await Client.findOne({ user_ref: req.user._id });
+  return client ? client._id.toString() : null;
+};
+
+// Checkout sessions created without a logged-in client_id (guest checkout)
+// need Stripe itself to collect a phone number and full name, since we
+// have nowhere else to get them from before the account exists — the
+// email is enough on its own to know who to sign up.
+const guestCollectionFields = (isGuest) =>
+  isGuest
+    ? {
+        phone_number_collection: { enabled: true },
+        custom_fields: [
+          {
+            key: "full_name",
+            label: { type: "custom", custom: "Full Name" },
+            type: "text",
+          },
+        ],
+      }
+    : {};
+
+// Pulls whatever a completed session tells us about a guest purchaser,
+// for handing to findOrCreateGuestAccount.
+const guestInfoFromSession = (session) => ({
+  email: session.customer_details?.email,
+  phone: session.customer_details?.phone,
+  name: session.custom_fields?.find((f) => f.key === "full_name")?.text?.value,
+});
+
+// Resolves which Client a completed session's purchase should be granted
+// to — the client_id from metadata for a logged-in checkout, or (for a
+// guest checkout) finds/creates the account from what Stripe collected,
+// and backfills client_ref onto this session's Payment row(s) so the rest
+// of the webhook logic (below) doesn't need to know guest from logged-in.
+const resolveClientForSession = async (session, itemLabel) => {
+  const { client_id } = session.metadata;
+  if (client_id) {
+    const client = await Client.findById(client_id);
+    return client ? { client, isNewAccount: false } : null;
+  }
+
+  const { email, phone, name } = guestInfoFromSession(session);
+  if (!email || !phone) {
+    console.error("Guest checkout session missing email/phone:", session.id);
+    return null;
+  }
+
+  try {
+    const { client, isNew, rawToken } = await findOrCreateGuestAccount({
+      name,
+      phone,
+      email,
+      ip: null,
+      itemLabel,
+    });
+    await Payment.updateMany(
+      { stripe_session_id: session.id },
+      { client_ref: client._id, guest_setup_raw_token: isNew ? rawToken : undefined },
+    );
+    return { client, isNewAccount: isNew };
+  } catch (err) {
+    console.error("Failed to create guest account for checkout:", err.message);
+    return null;
+  }
+};
 
 const PLAN_TYPE_LABELS = {
   dietplan: "Dietplan",
@@ -42,13 +118,13 @@ const TAX_CODES = {
 // @desc Create a Stripe checkout session for one or more plans
 const createStripeCheckout = async (req, res) => {
   const {
-    client_id,
     plan_ids,
     coupon_code,
     currency_code = "INR",
   } = req.body;
 
   try {
+    const client_id = await resolveOwnClientId(req);
     if (!plan_ids || plan_ids.length === 0) {
       return res.status(400).json({ message: "At least one plan is required" });
     }
@@ -115,9 +191,10 @@ const createStripeCheckout = async (req, res) => {
       managed_payments: { enabled: false },
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
+      ...guestCollectionFields(!client_id),
       metadata: {
         type: "package",
-        client_id,
+        client_id: client_id || "",
         plan_ids: plan_ids.join(","),
         coupon_code: coupon ? coupon.code : "",
         display_currency: currency_code,
@@ -126,13 +203,14 @@ const createStripeCheckout = async (req, res) => {
 
     for (const { plan, finalPrice } of pricedPlans) {
       await Payment.create({
-        client_ref: client_id,
+        client_ref: client_id || undefined,
         plan_ref: plan._id,
         gateway: "stripe",
         amount: finalPrice,
         currency_code,
         status: "pending",
         coupon_code: coupon ? coupon.code : undefined,
+        stripe_session_id: session.id,
       });
     }
 
@@ -144,9 +222,10 @@ const createStripeCheckout = async (req, res) => {
 
 // @desc Create a Stripe checkout session for an e-book
 const createEbookCheckout = async (req, res) => {
-  const { client_id, ebook_id, currency_code = "INR" } = req.body;
+  const { ebook_id, currency_code = "INR" } = req.body;
 
   try {
+    const client_id = await resolveOwnClientId(req);
     const ebook = await EBook.findById(ebook_id);
     if (!ebook) return res.status(404).json({ message: "E-book not found" });
 
@@ -164,21 +243,23 @@ const createEbookCheckout = async (req, res) => {
       mode: "payment",
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
+      ...guestCollectionFields(!client_id),
       metadata: {
         type: "ebook",
-        client_id,
+        client_id: client_id || "",
         ebook_id,
         display_currency: currency_code,
       },
     });
 
     await Payment.create({
-      client_ref: client_id,
+      client_ref: client_id || undefined,
       ebook_ref: ebook_id,
       gateway: "stripe",
       amount: ebook.price,
       currency_code,
       status: "pending",
+      stripe_session_id: session.id,
     });
 
     res.json({ url: session.url });
@@ -189,9 +270,10 @@ const createEbookCheckout = async (req, res) => {
 
 // @desc Create a Stripe checkout session for a course
 const createCourseCheckout = async (req, res) => {
-  const { client_id, course_id, currency_code = "INR" } = req.body;
+  const { course_id, currency_code = "INR" } = req.body;
 
   try {
+    const client_id = await resolveOwnClientId(req);
     const course = await Course.findById(course_id);
     if (!course) return res.status(404).json({ message: "Course not found" });
 
@@ -209,21 +291,23 @@ const createCourseCheckout = async (req, res) => {
       mode: "payment",
       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.CLIENT_URL}/payment-cancelled`,
+      ...guestCollectionFields(!client_id),
       metadata: {
         type: "course",
-        client_id,
+        client_id: client_id || "",
         course_id,
         display_currency: currency_code,
       },
     });
 
     await Payment.create({
-      client_ref: client_id,
+      client_ref: client_id || undefined,
       course_ref: course_id,
       gateway: "stripe",
       amount: course.price,
       currency_code,
       status: "pending",
+      stripe_session_id: session.id,
     });
 
     res.json({ url: session.url });
@@ -258,14 +342,16 @@ const stripeWebhook = async (req, res) => {
 
     // E-book purchase
     if (session.metadata.type === "ebook") {
-      const { client_id, ebook_id } = session.metadata;
-      const client = await Client.findById(client_id);
-      if (client) {
+      const { ebook_id } = session.metadata;
+      const ebookForLabel = await EBook.findById(ebook_id);
+      const resolved = await resolveClientForSession(session, ebookForLabel?.title);
+      if (resolved) {
+        const { client } = resolved;
         client.purchased_ebooks.push(ebook_id);
         await client.save();
 
         const payment = await Payment.findOneAndUpdate(
-          { client_ref: client_id, ebook_ref: ebook_id, status: "pending" },
+          { stripe_session_id: session.id, ebook_ref: ebook_id, status: "pending" },
           { status: "completed", amount_settled: session.amount_total / 100 },
           { new: true, sort: { createdAt: -1 } },
         );
@@ -317,14 +403,16 @@ const stripeWebhook = async (req, res) => {
 
     // Course purchase
     if (session.metadata.type === "course") {
-      const { client_id, course_id } = session.metadata;
-      const client = await Client.findById(client_id);
-      if (client) {
+      const { course_id } = session.metadata;
+      const courseForLabel = await Course.findById(course_id);
+      const resolved = await resolveClientForSession(session, courseForLabel?.title);
+      if (resolved) {
+        const { client } = resolved;
         client.purchased_courses.push(course_id);
         await client.save();
 
         const payment = await Payment.findOneAndUpdate(
-          { client_ref: client_id, course_ref: course_id, status: "pending" },
+          { stripe_session_id: session.id, course_ref: course_id, status: "pending" },
           { status: "completed", amount_settled: session.amount_total / 100 },
           { new: true, sort: { createdAt: -1 } },
         );
@@ -375,11 +463,16 @@ const stripeWebhook = async (req, res) => {
     }
 
     // Package purchase (Dietplan / Workout / Combo)
-    const { client_id, plan_ids, coupon_code } = session.metadata;
+    const { plan_ids, coupon_code } = session.metadata;
     const planIdList = plan_ids.split(",");
 
-    const client = await Client.findById(client_id);
-    if (!client) return res.json({ received: true });
+    const plans = await Plan.find({ _id: { $in: planIdList } });
+    const resolved = await resolveClientForSession(
+      session,
+      plans.map(planDisplayName).join(", "),
+    );
+    if (!resolved) return res.json({ received: true });
+    const { client } = resolved;
 
     if (coupon_code) {
       await Coupon.updateOne(
@@ -388,7 +481,6 @@ const stripeWebhook = async (req, res) => {
       );
     }
 
-    const plans = await Plan.find({ _id: { $in: planIdList } });
     const receiptItems = [];
     // One invoice number for the whole checkout — a combo fallback can
     // complete as two separate Payment records (dietplan + workout), but
@@ -417,7 +509,7 @@ const stripeWebhook = async (req, res) => {
       }
 
       const payment = await Payment.findOneAndUpdate(
-        { client_ref: client_id, plan_ref: plan._id, status: "pending" },
+        { stripe_session_id: session.id, plan_ref: plan._id, status: "pending" },
         { status: "completed" },
         { new: true },
       );
@@ -485,7 +577,13 @@ const stripeWebhook = async (req, res) => {
 
 // @desc Get a completed checkout's items/total for the client's receipt image
 // (never trusts client-supplied amounts — rebuilds everything from the
-// actual completed Payment records, same source of truth as the email receipt)
+// actual completed Payment records, same source of truth as the email receipt).
+// Reachable without login now that checkout itself can happen as a guest —
+// knowing the session_id (a long random Stripe-generated value, handed only
+// to the payer via the success redirect) is the same security boundary a
+// password-reset link relies on, so that alone is treated as proof enough.
+// A logged-in caller gets an extra check: the session must actually belong
+// to their own account, so one client can't page through another's receipts.
 const getCheckoutSessionDetails = async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
@@ -493,9 +591,40 @@ const getCheckoutSessionDetails = async (req, res) => {
       return res.status(400).json({ message: "Payment not completed yet" });
     }
 
-    const client = await Client.findOne({ user_ref: req.user._id });
-    if (!client || client._id.toString() !== session.metadata.client_id) {
-      return res.status(403).json({ message: "Not authorized" });
+    // The webhook backfills client_ref onto every Payment row for this
+    // session — for a guest checkout that only becomes known once the
+    // account is created there, so this is the one reliable way to find
+    // the resulting client (session.metadata.client_id is empty for a
+    // guest and Checkout Session metadata can't be edited after the fact).
+    const anyPayment = await Payment.findOne({ stripe_session_id: session.id });
+    if (!anyPayment?.client_ref) {
+      return res.status(404).json({ message: "Payment not found" });
+    }
+    const client = await Client.findById(anyPayment.client_ref);
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    if (req.user) {
+      const ownClient = await Client.findOne({ user_ref: req.user._id });
+      if (!ownClient || ownClient._id.toString() !== client._id.toString()) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+    }
+
+    // Exposed exactly once — cleared immediately after being read so this
+    // isn't a second standing copy of the (still-valid, still-emailed)
+    // setup link sitting around in the database.
+    let accountSetup = { needs_account_setup: false };
+    if (anyPayment.guest_setup_raw_token) {
+      const accountUser = await User.findById(client.user_ref);
+      accountSetup = {
+        needs_account_setup: true,
+        setup_token: anyPayment.guest_setup_raw_token,
+        email: accountUser?.email,
+      };
+      await Payment.updateMany(
+        { stripe_session_id: session.id },
+        { guest_setup_raw_token: null },
+      );
     }
 
     if (session.metadata.type === "ebook") {
@@ -512,6 +641,7 @@ const getCheckoutSessionDetails = async (req, res) => {
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
         invoiceNumber: payment?.invoice_number,
+        ...accountSetup,
       });
     }
 
@@ -529,6 +659,7 @@ const getCheckoutSessionDetails = async (req, res) => {
         clientName: client.name,
         paidAt: payment?.updatedAt || new Date(),
         invoiceNumber: payment?.invoice_number,
+        ...accountSetup,
       });
     }
 
@@ -556,7 +687,7 @@ const getCheckoutSessionDetails = async (req, res) => {
       }
     }
 
-    res.json({ items, total, clientName: client.name, paidAt, invoiceNumber });
+    res.json({ items, total, clientName: client.name, paidAt, invoiceNumber, ...accountSetup });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

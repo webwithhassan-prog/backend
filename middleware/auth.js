@@ -41,4 +41,21 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+// For endpoints reachable both logged-in and as a guest (checkout, manual
+// payment claims). Populates req.user when a valid token is present,
+// but — unlike protect — never rejects the request when it isn't; an
+// invalid/expired token is just treated the same as no token at all.
+const optionalAuth = async (req, res, next) => {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer")) return next();
+
+  try {
+    const decoded = jwt.verify(header.split(" ")[1], process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.id).select("-password");
+  } catch (err) {
+    // Fall through as a guest.
+  }
+  next();
+};
+
+module.exports = { protect, optionalAuth };

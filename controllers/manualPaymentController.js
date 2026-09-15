@@ -10,6 +10,7 @@ const Coupon = require("../models/Coupon");
 const ManualPaymentMethod = require("../models/ManualPaymentMethod");
 const { getOrCreateSettings } = require("./settingsController");
 const { deleteCloudinaryImage } = require("../utils/cloudinaryImages");
+const { findOrCreateGuestAccount } = require("../utils/guestAccount");
 const {
   sendPaymentReceiptEmail,
   sendManualPaymentAlertEmail,
@@ -50,7 +51,6 @@ const notifyAdmin = async (details) => {
 // via /manual/:id/confirm after cross-checking the actual bank/wallet.
 const initiateManualPayment = async (req, res) => {
   const {
-    client_id,
     type,
     plan_ids,
     ebook_id,
@@ -59,6 +59,9 @@ const initiateManualPayment = async (req, res) => {
     method_id,
     currency_code = "INR",
     slip_url,
+    guest_name,
+    guest_phone,
+    guest_email,
   } = req.body;
 
   try {
@@ -66,8 +69,25 @@ const initiateManualPayment = async (req, res) => {
     if (!method) {
       return res.status(400).json({ message: "Invalid payment method" });
     }
-    const client = await Client.findById(client_id);
-    const clientName = client?.name || "Unknown client";
+
+    // client_id is resolved server-side from the session, never trusted
+    // from the body — a guest submitting this claim has no client_id yet
+    // at all, and provides their own contact details instead, which get
+    // stored on the Payment and used to create their account once an
+    // admin verifies the claim (see confirmManualPayment).
+    let client = null;
+    if (req.user) {
+      client = await Client.findOne({ user_ref: req.user._id });
+    } else if (!guest_name || !guest_phone || !guest_email) {
+      return res.status(400).json({
+        message: "Name, phone, and email are required",
+      });
+    }
+    const client_id = client?._id;
+    const clientName = client?.name || guest_name || "Unknown client";
+    const guestFields = client
+      ? {}
+      : { guest_name, guest_phone, guest_email };
 
     if (type === "package") {
       if (!plan_ids || plan_ids.length === 0) {
@@ -109,6 +129,7 @@ const initiateManualPayment = async (req, res) => {
             coupon_code: coupon ? coupon.code : undefined,
             manual_batch_id: batchId,
             slip_url: slip_url || null,
+            ...guestFields,
           }),
         );
       }
@@ -137,6 +158,7 @@ const initiateManualPayment = async (req, res) => {
         currency_code,
         status: "pending",
         slip_url: slip_url || null,
+        ...guestFields,
       });
       await notifyAdmin({
         clientName,
@@ -161,6 +183,7 @@ const initiateManualPayment = async (req, res) => {
         currency_code,
         status: "pending",
         slip_url: slip_url || null,
+        ...guestFields,
       });
       await notifyAdmin({
         clientName,
@@ -239,8 +262,9 @@ const listPendingManualPayments = async (req, res) => {
 
       return {
         _id: p._id,
-        client_name: p.client_ref?.name || "Unknown client",
-        client_phone: p.client_ref?.phone_number || "",
+        client_name: p.client_ref?.name || p.guest_name || "Unknown client",
+        client_phone: p.client_ref?.phone_number || p.guest_phone || "",
+        is_guest: !p.client_ref,
         item_label: itemLabel,
         amount: p.amount,
         currency_code: p.currency_code,
@@ -320,8 +344,51 @@ const confirmManualPayment = async (req, res) => {
       return res.status(400).json({ message: "This payment has already been reviewed" });
     }
 
-    const client = await Client.findById(payment.client_ref);
-    if (!client) return res.status(404).json({ message: "Client not found" });
+    // A guest claim has no client_ref yet — this is the moment (admin
+    // verification) it gets one, using the contact details they submitted
+    // the claim with. An existing customer's claim already has client_ref
+    // set from initiateManualPayment, so this is a no-op for them.
+    let client;
+    if (payment.client_ref) {
+      client = await Client.findById(payment.client_ref);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+    } else {
+      let itemLabel = "your purchase";
+      if (payment.ebook_ref) {
+        itemLabel = (await EBook.findById(payment.ebook_ref))?.title || itemLabel;
+      } else if (payment.course_ref) {
+        itemLabel = (await Course.findById(payment.course_ref))?.title || itemLabel;
+      } else if (payment.plan_ref) {
+        const plan = await Plan.findById(payment.plan_ref);
+        if (plan) itemLabel = planDisplayName(plan);
+      }
+
+      try {
+        const resolved = await findOrCreateGuestAccount({
+          name: payment.guest_name,
+          phone: payment.guest_phone,
+          email: payment.guest_email,
+          ip: null,
+          itemLabel,
+        });
+        client = resolved.client;
+      } catch (err) {
+        return res.status(400).json({
+          message: `Could not create the client's account: ${err.message}`,
+        });
+      }
+
+      const filter = payment.manual_batch_id
+        ? { manual_batch_id: payment.manual_batch_id }
+        : { _id: payment._id };
+      await Payment.updateMany(filter, {
+        client_ref: client._id,
+        guest_name: null,
+        guest_phone: null,
+        guest_email: null,
+      });
+      payment.client_ref = client._id;
+    }
 
     if (payment.ebook_ref) {
       client.purchased_ebooks.push(payment.ebook_ref);

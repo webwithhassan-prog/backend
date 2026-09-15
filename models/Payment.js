@@ -106,6 +106,37 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Stripe session this payment was created under — the one reliable key
+    // to find it again from the webhook when client_ref isn't known yet
+    // (a guest checkout), and works just as well for the logged-in case.
+    stripe_session_id: {
+      type: String,
+      default: null,
+    },
+    // Guest checkout/claim — captured at submission time, before any
+    // account exists. Cleared once the account is created and client_ref
+    // is set (confirmManualPayment/webhook), so it never lingers as a
+    // second, stale copy of the client's real contact info.
+    guest_name: {
+      type: String,
+      default: null,
+    },
+    guest_phone: {
+      type: String,
+      default: null,
+    },
+    guest_email: {
+      type: String,
+      default: null,
+    },
+    // Transient — set only when this payment just created a brand-new
+    // account, so the payment-success page can offer the "set your
+    // password" form inline instead of only via the emailed link. Cleared
+    // after being read once (see getCheckoutSessionDetails).
+    guest_setup_raw_token: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );

@@ -27,6 +27,22 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Set on a guest-checkout-created account: they paid (or their manual
+    // claim was verified) before ever choosing a password, so the account
+    // exists with an unguessable random one until they complete setup via
+    // accountSetupToken below — same shape as the password-reset flow.
+    password_set: {
+      type: Boolean,
+      default: true,
+    },
+    accountSetupToken: {
+      type: String,
+      default: null,
+    },
+    accountSetupExpires: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

@@ -192,10 +192,75 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// @desc Finish setting up a guest-checkout-created account: confirm/fix the
+// phone number and choose a real password. Email is fixed at this point —
+// it's the account's login identifier and was already fixed by whichever
+// payment created it, so it's shown but not editable here. Auto-logs them
+// in on success so they don't have to immediately re-enter what they just
+// typed.
+const completeAccountSetup = async (req, res) => {
+  const { token, phone_number, password } = req.body;
+
+  try {
+    if (isPasswordTooShort(password)) {
+      return res.status(400).json({
+        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      });
+    }
+    if (!phone_number) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await User.findOne({
+      accountSetupToken: hashedToken,
+      accountSetupExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "This setup link is invalid or has expired — use \"Forgot password\" on the login page instead.",
+      });
+    }
+
+    const client = await Client.findOne({ user_ref: user._id });
+    if (!client) return res.status(404).json({ message: "Client not found" });
+
+    client.phone_number = phone_number;
+    try {
+      await client.save();
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(400).json({
+          message: "That phone number is already registered to another account.",
+        });
+      }
+      throw err;
+    }
+
+    user.password = password;
+    user.password_set = true;
+    user.accountSetupToken = null;
+    user.accountSetupExpires = null;
+    await user.save();
+
+    res.json({
+      _id: user._id,
+      email: user.email,
+      role: user.role,
+      client_id: client._id,
+      token: generateToken(user._id),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   registerClient,
   login,
   changePassword,
   forgotPassword,
   resetPassword,
+  completeAccountSetup,
 };

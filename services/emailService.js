@@ -266,8 +266,46 @@ const sendManualPaymentAlertEmail = async ({
   });
 };
 
+// Sent once a guest-checkout (or a verified manual claim) creates an
+// account on someone's behalf — they paid/were verified before ever
+// choosing a password, so this is how they actually get in. The inline
+// form shown right after payment is the primary path; this is the backup
+// for a closed tab or a different device.
+const sendAccountSetupEmail = async (toEmail, setupUrl, itemLabel) => {
+  const body = `
+    ${iconCircle("🎉", "#e8f8ee", "#1f9d55")}
+    <h1 style="margin:0 0 14px; color:${BRAND_BLUE}; font-size:22px; font-weight:800; text-align:center;">
+      You're in — just set a password
+    </h1>
+    <p style="margin:0 0 4px; color:#495468; font-size:15px; line-height:1.65; text-align:center;">
+      ${itemLabel ? `Your payment for <strong>${itemLabel}</strong> went through` : "Your payment went through"}
+      and your account is ready. Set a password below to access it any time.
+    </p>
+    <p style="margin:12px 0 0; color:#8b93a7; font-size:13px; text-align:center;">
+      This link expires in <strong style="color:${BRAND_BLUE};">48 hours</strong> —
+      after that, use "Forgot password" on the login page instead.
+    </p>
+
+    ${ctaButton("Set Your Password", setupUrl)}
+
+    <p style="margin:8px 0 0; color:#8b93a7; font-size:12px; text-align:center; line-height:1.6;">
+      Button not working? Copy and paste this link into your browser:
+    </p>
+    <p style="margin:6px 0 24px; padding:10px 14px; background:#f7f8fb; border-radius:8px; color:${BRAND_BLUE}; font-size:12px; word-break:break-all; text-align:center;">
+      ${setupUrl}
+    </p>
+  `;
+
+  await sendEmail({
+    to: toEmail,
+    subject: "Set your password — your Fitness Zone account is ready",
+    html: wrapEmail(body),
+  });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendPaymentReceiptEmail,
   sendManualPaymentAlertEmail,
+  sendAccountSetupEmail,
 };
