@@ -6,6 +6,7 @@ const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const trainerRoutes = require("./routes/trainerRoutes");
@@ -44,9 +45,15 @@ const { startCheckinReminderScheduler } = require("./utils/checkinReminderSchedu
 
 const app = express();
 
-// Render sits behind a proxy — without this, req.ip is the proxy's address
-// instead of the real visitor IP, breaking IP-based country lookups.
-app.set("trust proxy", true);
+// Render sits behind exactly one reverse proxy — without this, req.ip is
+// the proxy's address instead of the real visitor IP, breaking IP-based
+// country lookups. `true` (trust every hop) was flagged by express-rate-limit
+// as a real vulnerability: it also trusts an X-Forwarded-For value a client
+// sends itself, letting anyone bypass IP-based rate limiting by just
+// changing that header on every request. `1` trusts exactly the one hop
+// Render's own load balancer adds, which still yields the real visitor IP
+// without trusting anything the client controls.
+app.set("trust proxy", 1);
 
 connectDB().then(() => {
   startDietplanScheduler();
@@ -59,6 +66,16 @@ connectDB().then(() => {
   startCheckinReminderScheduler();
 });
 
+// This API is deliberately consumed cross-origin (the frontend is a
+// separate domain), and it serves no HTML — CSP has nothing to protect
+// here and would only add noise, so it's turned off; CORP is relaxed so
+// the frontend can still read responses normally.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 app.use(cors());
 app.use(
   "/api/payments/stripe/webhook",
