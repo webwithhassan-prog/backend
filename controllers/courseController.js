@@ -38,6 +38,13 @@ const getClientCourses = async (req, res) => {
     const client = await Client.findById(req.params.clientId);
     if (!client) return res.status(404).json({ message: "Client not found" });
 
+    if (
+      req.user.role === "client" &&
+      client.user_ref.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
     const courses = await Course.find({
       _id: { $in: client.purchased_courses },
     });

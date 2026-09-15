@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
+const { checkoutLimiter, rejectBots } = require('../middleware/security');
 const {
   createApplication,
   getApplications,
@@ -11,7 +12,7 @@ const {
 } = require('../controllers/applicationController');
 
 // Public route — anyone can apply
-router.post('/', createApplication);
+router.post('/', checkoutLimiter, rejectBots, createApplication);
 
 // Admin-only routes
 router.get('/', protect, adminOnly, getApplications);

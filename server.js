@@ -8,6 +8,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const connectDB = require("./config/db");
+const { sanitizeMongoInput } = require("./middleware/security");
 const authRoutes = require("./routes/authRoutes");
 const trainerRoutes = require("./routes/trainerRoutes");
 const planRoutes = require("./routes/planRoutes");
@@ -76,12 +77,39 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
-app.use(cors());
+// Only the real frontend (and local dev) ever needs to call this API from a
+// browser — a wide-open CORS policy would let any other website's JS make
+// authenticated-looking requests here on a visitor's behalf. `!origin` covers
+// non-browser callers (curl, server-to-server, Stripe's own webhook POSTs),
+// which don't send an Origin header and aren't subject to CORS anyway.
+const allowedOrigins = [
+  "https://fitnesszone.ltd",
+  "https://www.fitnesszone.ltd",
+  "http://localhost:5173",
+];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      try {
+        if (/\.vercel\.app$/.test(new URL(origin).hostname)) {
+          return callback(null, true);
+        }
+      } catch {
+        // Malformed/spoofed Origin header — fall through to reject below.
+      }
+      callback(new Error("Not allowed by CORS"));
+    },
+  }),
+);
 app.use(
   "/api/payments/stripe/webhook",
   express.raw({ type: "application/json" }),
 );
 app.use(express.json());
+app.use(sanitizeMongoInput);
 
 app.get("/", (req, res) => {
   res.send("Fitness Platform API running");
@@ -115,6 +143,19 @@ app.use("/api/courses", courseRoutes);
 app.use("/api/recorded-gallery", recordedGalleryRoutes);
 app.use("/api/hero-banners", heroBannerRoutes);
 app.use("/api/manual-payment-methods", manualPaymentMethodRoutes);
+
+// Final safety net — every route above catches and JSON-responds to its own
+// errors, but anything that still reaches here (a thrown/rejected error
+// Express itself routes via next(err), like a blocked CORS request, or a
+// bug in a route that forgot its own try/catch) would otherwise fall through
+// to Express's default handler, which — outside NODE_ENV=production —
+// renders a full stack trace, including absolute server file paths, as the
+// HTTP response body. This keeps that same class of failure from ever
+// leaking internals, in any environment.
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({ message: "Something went wrong" });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

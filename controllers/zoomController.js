@@ -84,6 +84,16 @@ const phoneNumbersMatch = (a, b) => {
 const joinViaLookup = async (req, res) => {
   const { name, phone_number, class_id } = req.body;
 
+  if (
+    typeof name !== "string" ||
+    typeof phone_number !== "string" ||
+    typeof class_id !== "string" ||
+    !name.trim() ||
+    !phone_number.trim()
+  ) {
+    return res.status(400).json({ message: "Name and phone number are required" });
+  }
+
   try {
     const candidates = await Client.find({ name });
     const client = candidates.find((c) =>

@@ -25,7 +25,7 @@ const {
 router.post('/stripe/checkout', checkoutLimiter, optionalAuth, createStripeCheckout);
 router.post('/stripe/ebook-checkout', checkoutLimiter, optionalAuth, createEbookCheckout);
 router.post('/stripe/course-checkout', checkoutLimiter, optionalAuth, createCourseCheckout);
-router.get('/session/:sessionId', optionalAuth, getCheckoutSessionDetails);
+router.get('/session/:sessionId', checkoutLimiter, optionalAuth, getCheckoutSessionDetails);
 
 router.post('/manual/initiate', checkoutLimiter, optionalAuth, rejectBots, initiateManualPayment);
 router.get('/manual/mine', protect, getMyPendingManualPayments);
