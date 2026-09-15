@@ -1,0 +1,17 @@
+name: Deploy to Render
+
+# Render's GitHub App was never installed on this account, so Render never
+# learns about pushes on its own (confirmed via github.com/settings/installations
+# showing no Render entry). This calls Render's deploy hook directly instead,
+# which needs no GitHub App / repo access grant — just the secret hook URL.
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
