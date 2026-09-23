@@ -5,11 +5,11 @@ const adminOnly = require("../middleware/adminOnly");
 const {
   regenerateSchedule,
   getZoomLink,
-  rotateZoomLinkNow,
+  setZoomLink,
 } = require("../controllers/timetableController");
 
 router.post("/regenerate", protect, adminOnly, regenerateSchedule);
 router.get("/zoom-link", protect, adminOnly, getZoomLink);
-router.post("/zoom-link/rotate", protect, adminOnly, rotateZoomLinkNow);
+router.put("/zoom-link", protect, adminOnly, setZoomLink);
 
 module.exports = router;

@@ -2,7 +2,7 @@ const DayPlan = require("../models/DayPlan");
 const TimeSlot = require("../models/TimeSlot");
 const Class = require("../models/Class");
 const { PKT_OFFSET_HOURS, pktToDate, toPKTParts } = require("../utils/pktTime");
-const { getOrCreateSettings, rotateZoomLink } = require("../utils/zoomLinkRotation");
+const { getOrCreateSettings } = require("../utils/zoomLinkRotation");
 
 // TimeSlot.hour/minute are entered by the admin as Pakistan time — see the
 // "Time is in Pakistan time" hint on the admin form. `new Date(year,
@@ -138,12 +138,36 @@ const getZoomLink = async (req, res) => {
   }
 };
 
-// @desc Admin — rotate the shared Zoom link right now (in addition to the
-// automatic weekly check), and immediately push it onto upcoming classes
-// rather than waiting for the next scheduled regeneration
-const rotateZoomLinkNow = async (req, res) => {
+// @desc Admin — manually set the shared Zoom link used for every class.
+// Automatic Zoom-API rotation is paused (see server.js) — the admin now
+// owns this link entirely; whatever they paste here is pushed onto every
+// upcoming class immediately, same as the old rotation used to do.
+const setZoomLink = async (req, res) => {
+  const { zoom_join_url } = req.body;
+
+  if (typeof zoom_join_url !== "string" || !zoom_join_url.trim()) {
+    return res.status(400).json({ message: "Zoom link is required" });
+  }
+
+  let parsed;
   try {
-    const settings = await rotateZoomLink();
+    parsed = new URL(zoom_join_url.trim());
+  } catch {
+    return res.status(400).json({ message: "Enter a valid URL" });
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return res.status(400).json({ message: "Enter a valid URL" });
+  }
+
+  try {
+    const settings = await getOrCreateSettings();
+    settings.zoom_join_url = parsed.toString();
+    // No longer a real Zoom API meeting id — this link is admin-entered,
+    // not created through Zoom's API, so there's nothing to rotate/delete
+    // via that API anymore.
+    settings.zoom_meeting_id = null;
+    settings.zoom_rotated_at = new Date();
+    await settings.save();
     await runRegeneration();
     res.json({
       zoom_join_url: settings.zoom_join_url,
@@ -158,5 +182,5 @@ module.exports = {
   regenerateSchedule,
   runRegeneration,
   getZoomLink,
-  rotateZoomLinkNow,
+  setZoomLink,
 };

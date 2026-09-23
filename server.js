@@ -40,7 +40,6 @@ const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const manualPaymentMethodRoutes = require("./routes/manualPaymentMethodRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
-const { startZoomRotationScheduler } = require("./utils/zoomLinkRotation");
 const { startClassReminderScheduler } = require("./utils/classReminderScheduler");
 const { startCheckinReminderScheduler } = require("./utils/checkinReminderScheduler");
 
@@ -58,10 +57,10 @@ app.set("trust proxy", 1);
 
 connectDB().then(() => {
   startDietplanScheduler();
-  // Zoom link rotation runs first — the class scheduler copies each slot's
-  // current link onto that day's generated classes, so slots should have
-  // a link (or already be mid-rotation) before regeneration reads them.
-  startZoomRotationScheduler();
+  // Automatic Zoom-API rotation is paused — the admin now sets the shared
+  // class Zoom link by hand (see timetableController.setZoomLink). The
+  // rotation code itself (utils/zoomLinkRotation.js, services/zoomService.js)
+  // is left in place, just unused, in case this needs to switch back later.
   startClassScheduler();
   startClassReminderScheduler();
   startCheckinReminderScheduler();
