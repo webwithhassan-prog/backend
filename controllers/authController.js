@@ -5,8 +5,18 @@ const Client = require("../models/Client");
 const { sendPasswordResetEmail } = require("../services/emailService");
 const { lookupCountryFromIp } = require("../utils/geolocation");
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+// Admin sessions carry real operational power (client bans, payments,
+// content, settings), so they're kept short-lived — a stolen/forgotten
+// admin token is only useful for 2 days instead of a full month. Clients
+// get the longer-lived convenience of not having to log back in constantly,
+// since a client token can't do anything an attacker would want.
+const ADMIN_TOKEN_TTL = "2d";
+const CLIENT_TOKEN_TTL = "30d";
+
+const generateToken = (id, role) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: role === "admin" ? ADMIN_TOKEN_TTL : CLIENT_TOKEN_TTL,
+  });
 };
 
 const MIN_PASSWORD_LENGTH = 6;
@@ -48,7 +58,7 @@ const registerClient = async (req, res) => {
       email: user.email,
       role: user.role,
       client_id: client._id,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.role),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -80,7 +90,7 @@ const login = async (req, res) => {
         email: user.email,
         role: user.role,
         client_id,
-        token: generateToken(user._id),
+        token: generateToken(user._id, user.role),
       });
     } else {
       res.status(401).json({ message: "Invalid email or password" });
@@ -249,7 +259,7 @@ const completeAccountSetup = async (req, res) => {
       email: user.email,
       role: user.role,
       client_id: client._id,
-      token: generateToken(user._id),
+      token: generateToken(user._id, user.role),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
