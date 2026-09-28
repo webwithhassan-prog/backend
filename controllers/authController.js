@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const Client = require("../models/Client");
 const { sendPasswordResetEmail } = require("../services/emailService");
-const { lookupCountryFromIp } = require("../utils/geolocation");
+const { detectCountry } = require("../utils/geolocation");
 
 // Admin sessions carry real operational power (client bans, payments,
 // content, settings), so they're kept short-lived — a stolen/forgotten
@@ -41,7 +41,9 @@ const registerClient = async (req, res) => {
 
     const user = await User.create({ email, password, role: "client" });
 
-    const { country, country_code } = await lookupCountryFromIp(req.ip);
+    const { country, country_code } = await detectCountry(req, {
+      timeZone: req.body.timezone,
+    });
 
     const client = await Client.create({
       user_ref: user._id,

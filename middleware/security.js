@@ -1,14 +1,24 @@
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+const { clientIpOf } = require("../utils/geolocation");
+
+// Keyed on the real visitor address, not req.ip — behind Render's
+// Cloudflare edge, req.ip can be an edge-node address shared by many
+// unrelated visitors, which would let one person's traffic exhaust
+// everyone else's limit.
+const baseOptions = {
+  windowMs: 15 * 60 * 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(clientIpOf(req)),
+};
 
 // Applied to login/signup/password-reset/account-setup — the endpoints an
 // attacker would actually want to hammer (credential stuffing, account
-// enumeration, spamming reset emails). Keyed by IP; a genuine user retrying
-// a typo a few times never comes close to this.
+// enumeration, spamming reset emails). A genuine user retrying a typo a few
+// times never comes close to this.
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  ...baseOptions,
   limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { message: "Too many attempts — please wait a few minutes and try again." },
 });
 
@@ -16,10 +26,8 @@ const authLimiter = rateLimit({
 // without an account. Looser than authLimiter — a real shopper might start
 // checkout several times (changing plans, retrying after a card decline).
 const checkoutLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  ...baseOptions,
   limit: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { message: "Too many requests — please wait a few minutes and try again." },
 });
 
@@ -28,10 +36,8 @@ const checkoutLimiter = rateLimit({
 // enough headroom to stop a scripted flood without affecting a real
 // visitor browsing normally in one session.
 const publicLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  ...baseOptions,
   limit: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { message: "Too many requests — please wait a few minutes and try again." },
 });
 

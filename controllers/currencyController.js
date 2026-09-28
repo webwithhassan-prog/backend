@@ -1,4 +1,4 @@
-const { lookupCountryFromIp } = require("../utils/geolocation");
+const { detectCountry } = require("../utils/geolocation");
 const { getInrExchangeRates } = require("../utils/exchangeRates");
 const { getCurrencyForCountry, CURRENCY_SYMBOLS } = require("../utils/currencyByCountry");
 
@@ -34,23 +34,26 @@ const getRates = async (req, res) => {
 // currency is already INR), return a live INR conversion rate.
 const detectLocalCurrency = async (req, res) => {
   try {
-    const { country, country_code } = await lookupCountryFromIp(req.ip);
+    const { country, country_code, source } = await detectCountry(req, {
+      timeZone: req.query.tz,
+    });
     const localCurrency = country_code ? getCurrencyForCountry(country_code) : null;
 
     if (!localCurrency) {
-      return res.json({ country, country_code, show_conversion: false });
+      return res.json({ country, country_code, source, show_conversion: false });
     }
 
     const rates = await getInrExchangeRates();
     const rate = rates[localCurrency.code];
 
     if (!rate) {
-      return res.json({ country, country_code, show_conversion: false });
+      return res.json({ country, country_code, source, show_conversion: false });
     }
 
     res.json({
       country,
       country_code,
+      source,
       show_conversion: true,
       currency_code: localCurrency.code,
       symbol: localCurrency.symbol,

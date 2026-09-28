@@ -85,6 +85,7 @@ const allowedOrigins = [
   "https://fitnesszone.ltd",
   "https://www.fitnesszone.ltd",
   "http://localhost:5173",
+  "http://localhost:5180",
 ];
 app.use(
   cors({
