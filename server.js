@@ -58,6 +58,13 @@ const app = express();
 app.set("trust proxy", 1);
 
 connectDB().then(() => {
+  // A local server shares the production database — run it with
+  // DISABLE_SCHEDULERS=1 so it doesn't deduct dietplans or send reminder
+  // pushes alongside the live one.
+  if (process.env.DISABLE_SCHEDULERS === "1") {
+    console.log("Schedulers disabled (DISABLE_SCHEDULERS=1)");
+    return;
+  }
   startDietplanScheduler();
   // Automatic Zoom-API rotation is paused — the admin now sets the shared
   // class Zoom link by hand (see timetableController.setZoomLink). The

@@ -1,9 +1,14 @@
 const TimeSlot = require("../models/TimeSlot");
 
-// @desc Get all time slots
+// @desc Get all time slots. Fields are listed explicitly: older slot
+// documents still carry zoom_join_url/zoom_meeting_id from before the Zoom
+// link moved to Settings, and this also serves the public /time-slots/public
+// route — returning whole documents handed those join links to anyone.
 const getTimeSlots = async (req, res) => {
   try {
-    const slots = await TimeSlot.find().populate("trainer_ref", "name");
+    const slots = await TimeSlot.find()
+      .select("trainer_ref hour minute")
+      .populate("trainer_ref", "name");
     res.json(slots);
   } catch (err) {
     res.status(500).json({ message: err.message });
