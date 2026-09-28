@@ -13,23 +13,26 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      req.user = await User.findById(decoded.id).select("-password");
+      // Both lookups key off the token's user id, so they run in parallel —
+      // one database round trip per authenticated request instead of two
+      // (the database is a long way from the server, so each one counts).
+      const [user, client] = await Promise.all([
+        User.findById(decoded.id).select("-password"),
+        Client.findOne({ user_ref: decoded.id }).select("banned"),
+      ]);
+
+      req.user = user;
       if (!req.user) {
         return res.status(401).json({ message: "User not found" });
       }
 
       // A client's JWT can outlive an admin banning them mid-session, so
       // this is checked on every request, not just at login.
-      if (req.user.role === "client") {
-        const client = await Client.findOne({ user_ref: req.user._id }).select(
-          "banned",
-        );
-        if (client?.banned) {
-          return res.status(403).json({
-            message: "This account has been banned. Contact support for help.",
-            banned: true,
-          });
-        }
+      if (req.user.role === "client" && client?.banned) {
+        return res.status(403).json({
+          message: "This account has been banned. Contact support for help.",
+          banned: true,
+        });
       }
 
       next();
