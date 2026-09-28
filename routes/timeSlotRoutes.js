@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -9,7 +10,7 @@ const {
   deleteTimeSlot,
 } = require("../controllers/timeSlotController");
 
-router.get("/public", getTimeSlots);
+router.get("/public", cachePublic(), getTimeSlots);
 
 router.get("/", protect, adminOnly, getTimeSlots);
 router.post("/", protect, adminOnly, createTimeSlot);

@@ -7,6 +7,7 @@ const EBook = require("../models/EBook");
 const Course = require("../models/Course");
 const SalesLog = require("../models/SalesLog");
 const User = require("../models/User");
+const ProcessedWebhookEvent = require("../models/ProcessedWebhookEvent");
 const {
   sendPaymentReceiptEmail,
   sendFulfillmentFailedAlertEmail,
@@ -331,7 +332,254 @@ const createCourseCheckout = async (req, res) => {
   }
 };
 
-// @desc Stripe webhook — confirm payment, activate client's plans or unlock e-book
+// Grants whatever a completed Checkout Session paid for. Runs at most once
+// per Stripe event — see stripeWebhook.
+const handleCheckoutCompleted = async (session) => {
+  // Custom/off-menu invoice (manually created payment link)
+  if (session.metadata.type === "custom_invoice") {
+    await completeCustomInvoice(session);
+    return;
+  }
+
+  // E-book purchase
+  if (session.metadata.type === "ebook") {
+    const { ebook_id } = session.metadata;
+    const ebookForLabel = await EBook.findById(ebook_id);
+    const resolved = await resolveClientForSession(session, ebookForLabel?.title);
+    if (resolved) {
+      const { client } = resolved;
+      client.purchased_ebooks.push(ebook_id);
+      await client.save();
+
+      const payment = await Payment.findOneAndUpdate(
+        { stripe_session_id: session.id, ebook_ref: ebook_id, status: "pending" },
+        { status: "completed", amount_settled: session.amount_total / 100 },
+        { new: true, sort: { createdAt: -1 } },
+      );
+      if (payment) {
+        payment.amount_display = await convertFromInr(
+          payment.amount,
+          payment.currency_code,
+        );
+        payment.invoice_number = await getNextInvoiceNumber();
+        await payment.save();
+
+        await SalesLog.create({
+          category: "ebook",
+          amount: payment.amount,
+          amount_settled: payment.amount_settled,
+          currency_code: payment.currency_code,
+          amount_display: payment.amount_display,
+          payment_ref: payment._id,
+        });
+
+        try {
+          const [user, ebook] = await Promise.all([
+            User.findById(client.user_ref),
+            EBook.findById(ebook_id),
+          ]);
+          if (user) {
+            await sendPaymentReceiptEmail(user.email, {
+              items: [
+                {
+                  name: ebook?.title || "E-Book",
+                  amount: payment.amount,
+                  amountSettled: payment.amount_settled,
+                },
+              ],
+              total: payment.amount,
+              totalSettled: payment.amount_settled,
+              paidAt: payment.updatedAt,
+              clientName: client.name,
+              invoiceNumber: payment.invoice_number,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send receipt email:", emailErr.message);
+        }
+      }
+    }
+    return;
+  }
+
+  // Course purchase
+  if (session.metadata.type === "course") {
+    const { course_id } = session.metadata;
+    const courseForLabel = await Course.findById(course_id);
+    const resolved = await resolveClientForSession(session, courseForLabel?.title);
+    if (resolved) {
+      const { client } = resolved;
+      client.purchased_courses.push(course_id);
+      await client.save();
+
+      const payment = await Payment.findOneAndUpdate(
+        { stripe_session_id: session.id, course_ref: course_id, status: "pending" },
+        { status: "completed", amount_settled: session.amount_total / 100 },
+        { new: true, sort: { createdAt: -1 } },
+      );
+      if (payment) {
+        payment.amount_display = await convertFromInr(
+          payment.amount,
+          payment.currency_code,
+        );
+        payment.invoice_number = await getNextInvoiceNumber();
+        await payment.save();
+
+        await SalesLog.create({
+          category: "course",
+          amount: payment.amount,
+          amount_settled: payment.amount_settled,
+          currency_code: payment.currency_code,
+          amount_display: payment.amount_display,
+          payment_ref: payment._id,
+        });
+
+        try {
+          const [user, course] = await Promise.all([
+            User.findById(client.user_ref),
+            Course.findById(course_id),
+          ]);
+          if (user) {
+            await sendPaymentReceiptEmail(user.email, {
+              items: [
+                {
+                  name: course?.title || "Course",
+                  amount: payment.amount,
+                  amountSettled: payment.amount_settled,
+                },
+              ],
+              total: payment.amount,
+              totalSettled: payment.amount_settled,
+              paidAt: payment.updatedAt,
+              clientName: client.name,
+              invoiceNumber: payment.invoice_number,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send receipt email:", emailErr.message);
+        }
+      }
+    }
+    return;
+  }
+
+  // Package purchase (Dietplan / Workout / Combo)
+  const { plan_ids, coupon_code } = session.metadata;
+  const planIdList = plan_ids.split(",");
+
+  const plans = await Plan.find({ _id: { $in: planIdList } });
+  const resolved = await resolveClientForSession(
+    session,
+    plans.map(planDisplayName).join(", "),
+  );
+  if (!resolved) return;
+  const { client } = resolved;
+
+  if (coupon_code) {
+    await Coupon.updateOne(
+      { code: coupon_code },
+      { $inc: { used_count: 1 } },
+    );
+  }
+
+  const receiptItems = [];
+  // One invoice number for the whole checkout — a combo fallback can
+  // complete as two separate Payment records (dietplan + workout), but
+  // they're one purchase and should share one invoice number.
+  const invoiceNumber = await getNextInvoiceNumber();
+
+  for (const plan of plans) {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + plan.duration_days);
+
+    client.active_plans.push({
+      plan_ref: plan._id,
+      product_type: plan.product_type,
+      expires_at: expiresAt,
+    });
+
+    if (plan.product_type === "dietplan" || plan.product_type === "combo") {
+      client.has_dietplan = true;
+      client.diet_plans_total += plan.diet_plans_included || 0;
+      if (!client.last_dietplan_delivered_at) {
+        client.last_dietplan_delivered_at = new Date();
+      }
+    }
+    if (plan.product_type === "workout" || plan.product_type === "combo") {
+      client.has_workout = true;
+    }
+
+    const payment = await Payment.findOneAndUpdate(
+      { stripe_session_id: session.id, plan_ref: plan._id, status: "pending" },
+      { status: "completed" },
+      { new: true },
+    );
+    if (payment) {
+      payment.amount_settled = (await inrToGbpPence(payment.amount)) / 100;
+      payment.amount_display = await convertFromInr(
+        payment.amount,
+        payment.currency_code,
+      );
+      payment.invoice_number = invoiceNumber;
+      await payment.save();
+
+      await SalesLog.create({
+        category: "package",
+        amount: payment.amount,
+        amount_settled: payment.amount_settled,
+        currency_code: payment.currency_code,
+        amount_display: payment.amount_display,
+        payment_ref: payment._id,
+      });
+      receiptItems.push({
+        name: planDisplayName(plan),
+        amount: payment.amount,
+        amountSettled: payment.amount_settled,
+      });
+    }
+  }
+
+  client.status = "active";
+  const furthestExpiry = client.active_plans.reduce(
+    (latest, p) => (p.expires_at > latest ? p.expires_at : latest),
+    client.access_expires_at &&
+      new Date(client.access_expires_at) > new Date()
+      ? new Date(client.access_expires_at)
+      : new Date(),
+  );
+  client.access_expires_at = furthestExpiry;
+
+  await client.save();
+
+  if (receiptItems.length > 0) {
+    try {
+      const user = await User.findById(client.user_ref);
+      if (user) {
+        await sendPaymentReceiptEmail(user.email, {
+          items: receiptItems,
+          total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
+          totalSettled: receiptItems.reduce(
+            (sum, item) => sum + (item.amountSettled || 0),
+            0,
+          ),
+          paidAt: new Date(),
+          clientName: client.name,
+          invoiceNumber,
+        });
+      }
+    } catch (emailErr) {
+      console.error("Failed to send receipt email:", emailErr.message);
+    }
+  }
+};
+
+// @desc Stripe webhook — confirm payment, activate client's plans or unlock e-book.
+// Stripe re-sends an event whenever it doesn't get a timely 2xx (likely on a
+// cold start), and a re-delivery used to grant the purchase a second time —
+// extra plan entries, a doubled diet-plan quota, a coupon counted twice. Each
+// event id is now recorded before processing; a re-delivery is acknowledged
+// and skipped, and the record is released if processing fails so Stripe's
+// retry can still complete it.
 const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -346,245 +594,23 @@ const stripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
+  if (event.type !== "checkout.session.completed") {
+    return res.json({ received: true });
+  }
 
-    // Custom/off-menu invoice (manually created payment link)
-    if (session.metadata.type === "custom_invoice") {
-      await completeCustomInvoice(session);
-      return res.json({ received: true });
-    }
+  try {
+    await ProcessedWebhookEvent.create({ event_id: event.id });
+  } catch (err) {
+    if (err.code === 11000) return res.json({ received: true, duplicate: true });
+    throw err;
+  }
 
-    // E-book purchase
-    if (session.metadata.type === "ebook") {
-      const { ebook_id } = session.metadata;
-      const ebookForLabel = await EBook.findById(ebook_id);
-      const resolved = await resolveClientForSession(session, ebookForLabel?.title);
-      if (resolved) {
-        const { client } = resolved;
-        client.purchased_ebooks.push(ebook_id);
-        await client.save();
-
-        const payment = await Payment.findOneAndUpdate(
-          { stripe_session_id: session.id, ebook_ref: ebook_id, status: "pending" },
-          { status: "completed", amount_settled: session.amount_total / 100 },
-          { new: true, sort: { createdAt: -1 } },
-        );
-        if (payment) {
-          payment.amount_display = await convertFromInr(
-            payment.amount,
-            payment.currency_code,
-          );
-          payment.invoice_number = await getNextInvoiceNumber();
-          await payment.save();
-
-          await SalesLog.create({
-            category: "ebook",
-            amount: payment.amount,
-            amount_settled: payment.amount_settled,
-            currency_code: payment.currency_code,
-            amount_display: payment.amount_display,
-            payment_ref: payment._id,
-          });
-
-          try {
-            const [user, ebook] = await Promise.all([
-              User.findById(client.user_ref),
-              EBook.findById(ebook_id),
-            ]);
-            if (user) {
-              await sendPaymentReceiptEmail(user.email, {
-                items: [
-                  {
-                    name: ebook?.title || "E-Book",
-                    amount: payment.amount,
-                    amountSettled: payment.amount_settled,
-                  },
-                ],
-                total: payment.amount,
-                totalSettled: payment.amount_settled,
-                paidAt: payment.updatedAt,
-                clientName: client.name,
-                invoiceNumber: payment.invoice_number,
-              });
-            }
-          } catch (emailErr) {
-            console.error("Failed to send receipt email:", emailErr.message);
-          }
-        }
-      }
-      return res.json({ received: true });
-    }
-
-    // Course purchase
-    if (session.metadata.type === "course") {
-      const { course_id } = session.metadata;
-      const courseForLabel = await Course.findById(course_id);
-      const resolved = await resolveClientForSession(session, courseForLabel?.title);
-      if (resolved) {
-        const { client } = resolved;
-        client.purchased_courses.push(course_id);
-        await client.save();
-
-        const payment = await Payment.findOneAndUpdate(
-          { stripe_session_id: session.id, course_ref: course_id, status: "pending" },
-          { status: "completed", amount_settled: session.amount_total / 100 },
-          { new: true, sort: { createdAt: -1 } },
-        );
-        if (payment) {
-          payment.amount_display = await convertFromInr(
-            payment.amount,
-            payment.currency_code,
-          );
-          payment.invoice_number = await getNextInvoiceNumber();
-          await payment.save();
-
-          await SalesLog.create({
-            category: "course",
-            amount: payment.amount,
-            amount_settled: payment.amount_settled,
-            currency_code: payment.currency_code,
-            amount_display: payment.amount_display,
-            payment_ref: payment._id,
-          });
-
-          try {
-            const [user, course] = await Promise.all([
-              User.findById(client.user_ref),
-              Course.findById(course_id),
-            ]);
-            if (user) {
-              await sendPaymentReceiptEmail(user.email, {
-                items: [
-                  {
-                    name: course?.title || "Course",
-                    amount: payment.amount,
-                    amountSettled: payment.amount_settled,
-                  },
-                ],
-                total: payment.amount,
-                totalSettled: payment.amount_settled,
-                paidAt: payment.updatedAt,
-                clientName: client.name,
-                invoiceNumber: payment.invoice_number,
-              });
-            }
-          } catch (emailErr) {
-            console.error("Failed to send receipt email:", emailErr.message);
-          }
-        }
-      }
-      return res.json({ received: true });
-    }
-
-    // Package purchase (Dietplan / Workout / Combo)
-    const { plan_ids, coupon_code } = session.metadata;
-    const planIdList = plan_ids.split(",");
-
-    const plans = await Plan.find({ _id: { $in: planIdList } });
-    const resolved = await resolveClientForSession(
-      session,
-      plans.map(planDisplayName).join(", "),
-    );
-    if (!resolved) return res.json({ received: true });
-    const { client } = resolved;
-
-    if (coupon_code) {
-      await Coupon.updateOne(
-        { code: coupon_code },
-        { $inc: { used_count: 1 } },
-      );
-    }
-
-    const receiptItems = [];
-    // One invoice number for the whole checkout — a combo fallback can
-    // complete as two separate Payment records (dietplan + workout), but
-    // they're one purchase and should share one invoice number.
-    const invoiceNumber = await getNextInvoiceNumber();
-
-    for (const plan of plans) {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + plan.duration_days);
-
-      client.active_plans.push({
-        plan_ref: plan._id,
-        product_type: plan.product_type,
-        expires_at: expiresAt,
-      });
-
-      if (plan.product_type === "dietplan" || plan.product_type === "combo") {
-        client.has_dietplan = true;
-        client.diet_plans_total += plan.diet_plans_included || 0;
-        if (!client.last_dietplan_delivered_at) {
-          client.last_dietplan_delivered_at = new Date();
-        }
-      }
-      if (plan.product_type === "workout" || plan.product_type === "combo") {
-        client.has_workout = true;
-      }
-
-      const payment = await Payment.findOneAndUpdate(
-        { stripe_session_id: session.id, plan_ref: plan._id, status: "pending" },
-        { status: "completed" },
-        { new: true },
-      );
-      if (payment) {
-        payment.amount_settled = (await inrToGbpPence(payment.amount)) / 100;
-        payment.amount_display = await convertFromInr(
-          payment.amount,
-          payment.currency_code,
-        );
-        payment.invoice_number = invoiceNumber;
-        await payment.save();
-
-        await SalesLog.create({
-          category: "package",
-          amount: payment.amount,
-          amount_settled: payment.amount_settled,
-          currency_code: payment.currency_code,
-          amount_display: payment.amount_display,
-          payment_ref: payment._id,
-        });
-        receiptItems.push({
-          name: planDisplayName(plan),
-          amount: payment.amount,
-          amountSettled: payment.amount_settled,
-        });
-      }
-    }
-
-    client.status = "active";
-    const furthestExpiry = client.active_plans.reduce(
-      (latest, p) => (p.expires_at > latest ? p.expires_at : latest),
-      client.access_expires_at &&
-        new Date(client.access_expires_at) > new Date()
-        ? new Date(client.access_expires_at)
-        : new Date(),
-    );
-    client.access_expires_at = furthestExpiry;
-
-    await client.save();
-
-    if (receiptItems.length > 0) {
-      try {
-        const user = await User.findById(client.user_ref);
-        if (user) {
-          await sendPaymentReceiptEmail(user.email, {
-            items: receiptItems,
-            total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
-            totalSettled: receiptItems.reduce(
-              (sum, item) => sum + (item.amountSettled || 0),
-              0,
-            ),
-            paidAt: new Date(),
-            clientName: client.name,
-            invoiceNumber,
-          });
-        }
-      } catch (emailErr) {
-        console.error("Failed to send receipt email:", emailErr.message);
-      }
-    }
+  try {
+    await handleCheckoutCompleted(event.data.object);
+  } catch (err) {
+    await ProcessedWebhookEvent.deleteOne({ event_id: event.id }).catch(() => {});
+    console.error("Stripe webhook processing failed:", err.message);
+    return res.status(500).json({ received: false });
   }
 
   res.json({ received: true });

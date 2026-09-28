@@ -41,4 +41,9 @@ const classSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Date-range reads (public schedule, reminders, cleanup) and the per-slot
+// lookups the daily schedule regeneration runs for every trainer and day.
+classSchema.index({ datetime: 1 });
+classSchema.index({ trainer_ref: 1, datetime: 1 });
+
 module.exports = mongoose.model('Class', classSchema);

@@ -141,4 +141,13 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Stripe webhook + receipt lookups, per-client history, the sales summary,
+// the manual-payment queue, and batch confirmation — each was a full
+// collection scan without these.
+paymentSchema.index({ stripe_session_id: 1 });
+paymentSchema.index({ client_ref: 1, status: 1 });
+paymentSchema.index({ status: 1, createdAt: -1 });
+paymentSchema.index({ gateway: 1, status: 1, createdAt: 1 });
+paymentSchema.index({ manual_batch_id: 1 });
+
 module.exports = mongoose.model("Payment", paymentSchema);

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { cachePublic } = require('../middleware/responseCache');
 const { protect } = require('../middleware/auth');
 const adminOnly = require('../middleware/adminOnly');
 const {
@@ -12,7 +13,7 @@ const {
   restoreClass,
 } = require('../controllers/classController');
 
-router.get('/public', getPublicClasses);
+router.get('/public', cachePublic(), getPublicClasses);
 
 router.get('/', protect, adminOnly, getClasses);
 router.post('/', protect, adminOnly, createClass);

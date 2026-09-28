@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -10,7 +11,7 @@ const {
   deleteMethod,
 } = require("../controllers/manualPaymentMethodController");
 
-router.get("/public", getPublicMethodsForCountry);
+router.get("/public", cachePublic(), getPublicMethodsForCountry);
 router.get("/", protect, adminOnly, getAllMethods);
 router.post("/", protect, adminOnly, createMethod);
 router.put("/:id", protect, adminOnly, updateMethod);

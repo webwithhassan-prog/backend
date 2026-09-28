@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -10,7 +11,7 @@ const {
   deletePlan,
 } = require("../controllers/planController");
 
-router.get("/public", getPublicPlans);
+router.get("/public", cachePublic(), getPublicPlans);
 
 router.get("/", protect, adminOnly, getPlans);
 router.post("/", protect, adminOnly, createPlan);

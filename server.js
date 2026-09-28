@@ -9,6 +9,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const connectDB = require("./config/db");
 const { sanitizeMongoInput } = require("./middleware/security");
+const { invalidateOnAdminWrite } = require("./middleware/responseCache");
 const authRoutes = require("./routes/authRoutes");
 const trainerRoutes = require("./routes/trainerRoutes");
 const planRoutes = require("./routes/planRoutes");
@@ -42,6 +43,7 @@ const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
 const { startClassReminderScheduler } = require("./utils/classReminderScheduler");
 const { startCheckinReminderScheduler } = require("./utils/checkinReminderScheduler");
+const { startMaintenanceScheduler } = require("./utils/maintenanceScheduler");
 
 const app = express();
 
@@ -64,6 +66,7 @@ connectDB().then(() => {
   startClassScheduler();
   startClassReminderScheduler();
   startCheckinReminderScheduler();
+  startMaintenanceScheduler();
 });
 
 // This API is deliberately consumed cross-origin (the frontend is a
@@ -110,6 +113,7 @@ app.use(
 );
 app.use(express.json());
 app.use(sanitizeMongoInput);
+app.use(invalidateOnAdminWrite);
 
 app.get("/", (req, res) => {
   res.send("Fitness Platform API running");

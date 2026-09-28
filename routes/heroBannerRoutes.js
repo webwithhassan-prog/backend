@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -9,7 +10,7 @@ const {
   deleteHeroBanner,
 } = require("../controllers/heroBannerController");
 
-router.get("/public", getHeroBanners);
+router.get("/public", cachePublic(), getHeroBanners);
 
 router.get("/", protect, adminOnly, getHeroBanners);
 router.post("/", protect, adminOnly, createHeroBanner);

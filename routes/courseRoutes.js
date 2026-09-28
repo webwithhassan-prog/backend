@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -11,7 +12,7 @@ const {
   deleteCourse,
 } = require("../controllers/courseController");
 
-router.get("/public", getPublicCourses);
+router.get("/public", cachePublic(), getPublicCourses);
 
 router.get("/", protect, adminOnly, getCourses);
 router.post("/", protect, adminOnly, createCourse);

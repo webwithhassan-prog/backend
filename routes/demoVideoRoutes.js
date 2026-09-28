@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
@@ -9,7 +10,7 @@ const {
   deleteDemoVideo,
 } = require("../controllers/demoVideoController");
 
-router.get("/public", getDemoVideos);
+router.get("/public", cachePublic(), getDemoVideos);
 
 router.get("/", protect, adminOnly, getDemoVideos);
 router.post("/", protect, adminOnly, createDemoVideo);
