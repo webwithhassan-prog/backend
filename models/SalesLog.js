@@ -45,4 +45,19 @@ const salesLogSchema = new mongoose.Schema(
 
 salesLogSchema.index({ date: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
 
+// Every sale path writes one of these, so this is the one place that alerts
+// the admin to new sales. Fire-and-forget: an email failure must never
+// fail the payment that triggered it. Required lazily — saleAlerts loads
+// Payment, which shouldn't be pulled in while this model is defined.
+salesLogSchema.post("save", function (doc) {
+  if (!this.$locals.wasNew) return;
+  require("../utils/saleAlerts")
+    .alertAdminOfSale(doc)
+    .catch((err) => console.error("Sale alert email failed:", err.message));
+});
+
+salesLogSchema.pre("save", function () {
+  this.$locals.wasNew = this.isNew;
+});
+
 module.exports = mongoose.model("SalesLog", salesLogSchema);

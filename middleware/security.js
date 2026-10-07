@@ -41,6 +41,15 @@ const publicLimiter = rateLimit({
   message: { message: "Too many requests — please wait a few minutes and try again." },
 });
 
+// Applied to "Report an issue" — every report emails the admin, so a
+// handful per visitor an hour is plenty; more is someone flooding the inbox.
+const reportLimiter = rateLimit({
+  ...baseOptions,
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  message: { message: "You've sent several reports already — please wait a while before sending another." },
+});
+
 // A hidden form field real users never see or fill (styled off-screen in
 // the frontend), so anything non-empty here is almost certainly a bot
 // filling every field it can find. Cheap first line of defense that needs
@@ -80,6 +89,7 @@ const sanitizeMongoInput = (req, res, next) => {
 module.exports = {
   authLimiter,
   checkoutLimiter,
+  reportLimiter,
   publicLimiter,
   rejectBots,
   sanitizeMongoInput,

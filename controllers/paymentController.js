@@ -45,6 +45,14 @@ const guestCollectionFields = (isGuest) =>
   isGuest
     ? {
         phone_number_collection: { enabled: true },
+        // Shown above Stripe's pay button: the team reaches clients on
+        // WhatsApp, so the phone entered here needs to be active there.
+        custom_text: {
+          submit: {
+            message:
+              "Please enter a phone number that's active on WhatsApp — our team will contact you there to set up your plan.",
+          },
+        },
         custom_fields: [
           {
             key: "full_name",

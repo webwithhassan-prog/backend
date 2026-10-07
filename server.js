@@ -39,6 +39,8 @@ const courseRoutes = require("./routes/courseRoutes");
 const recordedGalleryRoutes = require("./routes/recordedGalleryRoutes");
 const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const manualPaymentMethodRoutes = require("./routes/manualPaymentMethodRoutes");
+const issueReportRoutes = require("./routes/issueReportRoutes");
+const adminAlertRoutes = require("./routes/adminAlertRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
 const { startClassReminderScheduler } = require("./utils/classReminderScheduler");
@@ -154,6 +156,8 @@ app.use("/api/courses", courseRoutes);
 app.use("/api/recorded-gallery", recordedGalleryRoutes);
 app.use("/api/hero-banners", heroBannerRoutes);
 app.use("/api/manual-payment-methods", manualPaymentMethodRoutes);
+app.use("/api/issues", issueReportRoutes);
+app.use("/api/admin-alerts", adminAlertRoutes);
 
 // Final safety net — every route above catches and JSON-responds to its own
 // errors, but anything that still reaches here (a thrown/rejected error

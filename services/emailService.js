@@ -361,10 +361,90 @@ const sendFulfillmentFailedAlertEmail = async ({
   });
 };
 
+// Tells the monitored inbox about every completed sale (card checkouts and
+// paid invoices) as it happens, so nobody has to keep the admin Sales page
+// open to notice one. Values are escaped: names come from buyers.
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const detailRow = (label, value, bold = false) => `
+      <tr>
+        <td style="padding:6px 0; color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">${label}</td>
+        <td style="padding:6px 0; color:${BRAND_BLUE}; font-size:14px; ${bold ? "font-weight:700;" : ""} text-align:right;">${escapeHtml(value)}</td>
+      </tr>`;
+
+const sendNewSaleAlertEmail = async ({
+  category,
+  itemLabel,
+  clientName,
+  amountDisplay,
+  currencyCode,
+  amountSettled,
+}) => {
+  const shown =
+    amountDisplay != null ? `${currencyCode} ${Number(amountDisplay).toLocaleString()}` : null;
+  const settled = amountSettled != null ? `GBP ${Number(amountSettled).toFixed(2)}` : null;
+  const body = `
+    ${iconCircle("🎉", BRAND_BLUE_PALE)}
+    <h1 style="margin:0 0 8px; color:${BRAND_BLUE}; font-size:22px; font-weight:800; text-align:center;">
+      New sale
+    </h1>
+    <p style="margin:0 0 26px; color:#8b93a7; font-size:13.5px; text-align:center;">
+      A payment just went through on fitnesszone.ltd.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eef2fa; border-radius:12px; padding:20px 22px; margin-bottom:8px;">
+      ${detailRow("Client", clientName, true)}
+      ${detailRow("Item", itemLabel)}
+      ${detailRow("Type", category)}
+      ${shown ? detailRow("Amount", shown, true) : ""}
+      ${settled ? detailRow("Settled", settled) : ""}
+    </table>
+    ${ctaButton("Open Sales in Admin", `${process.env.CLIENT_URL}/admin/sales`)}
+  `;
+  await sendEmail({
+    to: REPLY_TO,
+    subject: `New sale — ${itemLabel}${shown ? ` (${shown})` : ""}`,
+    html: wrapEmail(body),
+  });
+};
+
+// A visitor or client reported a problem with the site (footer link /
+// dashboard) — straight to the monitored inbox, plus the admin Reported
+// Issues page.
+const sendIssueReportAlertEmail = async ({ name, contact, page, message }) => {
+  const body = `
+    ${iconCircle("🛠️", BRAND_BLUE_PALE)}
+    <h1 style="margin:0 0 8px; color:${BRAND_BLUE}; font-size:22px; font-weight:800; text-align:center;">
+      New issue reported
+    </h1>
+    <p style="margin:0 0 26px; color:#8b93a7; font-size:13.5px; text-align:center;">
+      Someone reported a problem on the website.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eef2fa; border-radius:12px; padding:20px 22px; margin-bottom:16px;">
+      ${detailRow("From", name || "Not given", true)}
+      ${detailRow("Contact", contact || "Not given")}
+      ${detailRow("Page", page || "—")}
+    </table>
+    <p style="margin:0 0 8px; color:${BRAND_BLUE}; font-size:14px; line-height:1.6; white-space:pre-wrap;">${escapeHtml(message)}</p>
+    ${ctaButton("Open Reported Issues", `${process.env.CLIENT_URL}/admin/issues`)}
+  `;
+  await sendEmail({
+    to: REPLY_TO,
+    subject: `Issue reported${name ? ` by ${name}` : ""}`,
+    html: wrapEmail(body),
+  });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendPaymentReceiptEmail,
   sendManualPaymentAlertEmail,
   sendAccountSetupEmail,
   sendFulfillmentFailedAlertEmail,
+  sendNewSaleAlertEmail,
+  sendIssueReportAlertEmail,
 };
