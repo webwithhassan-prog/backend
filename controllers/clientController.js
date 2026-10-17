@@ -106,25 +106,60 @@ const resumeClient = async (req, res) => {
   }
 };
 
-// @desc Extend a client's access by N days — adds to whichever is later:
-// their current expiry, or today (so extending an already-expired client
-// starts fresh from now, not from a date in the past)
+// @desc Extend a client's access by N days and/or add diet plans to their
+// quota. Days add to whichever is later: their current expiry, or today (so
+// extending an already-expired client starts fresh from now, not from a date
+// in the past). Diet plans are separate because access days don't refill
+// the quota on their own — a client given 365 more days would otherwise
+// still have only the 2 plans from their original package.
 const extendClient = async (req, res) => {
-  const { days } = req.body;
+  const days = Number(req.body.days || 0);
+  const dietPlans = Number(req.body.diet_plans || 0);
+
+  if (
+    !Number.isInteger(days) ||
+    !Number.isInteger(dietPlans) ||
+    days < 0 ||
+    dietPlans < 0 ||
+    days > 3650 ||
+    dietPlans > 250
+  ) {
+    return res.status(400).json({
+      message: "Days and diet plans must be whole numbers (0 or more).",
+    });
+  }
+  if (!days && !dietPlans) {
+    return res
+      .status(400)
+      .json({ message: "Enter days or diet plans to add." });
+  }
 
   try {
     const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
 
-    const now = new Date();
-    const base =
-      client.access_expires_at && new Date(client.access_expires_at) > now
-        ? new Date(client.access_expires_at)
-        : now;
+    if (days) {
+      const now = new Date();
+      const base =
+        client.access_expires_at && new Date(client.access_expires_at) > now
+          ? new Date(client.access_expires_at)
+          : now;
 
-    base.setDate(base.getDate() + Number(days));
-    client.access_expires_at = base;
-    client.status = "active";
+      base.setDate(base.getDate() + days);
+      client.access_expires_at = base;
+      client.status = "active";
+    }
+
+    if (dietPlans) {
+      client.diet_plans_total += dietPlans;
+      client.has_dietplan = true;
+      // Same starting point the Dietplan checkbox sets, so the 15-day
+      // auto-renewal has a date to count from.
+      if (!client.last_dietplan_delivered_at) {
+        client.last_dietplan_delivered_at = new Date();
+      }
+    }
+
     await client.save();
 
     res.json(attachComputedAccess(client));
