@@ -115,7 +115,7 @@ const sendPasswordResetEmail = async (toEmail, resetUrl) => {
       account. Click the button below to choose a new one.
     </p>
     <p style="margin:12px 0 0; color:#8b93a7; font-size:13px; text-align:center;">
-      This link expires in <strong style="color:${BRAND_BLUE};">5 minutes</strong>.
+      This link expires in <strong style="color:${BRAND_BLUE};">1 hour</strong>.
     </p>
 
     ${ctaButton("Reset Password", resetUrl)}

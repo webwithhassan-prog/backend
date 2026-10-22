@@ -68,13 +68,50 @@ const registerClient = async (req, res) => {
 };
 
 // @desc Login (admin or client)
+// The account a login identifier points to: an email, or the phone number
+// on the client's profile — many clients joined over WhatsApp and know
+// their number better than the email they signed up with. A phone number
+// matches with or without the country code or a leading 0
+// ("03001234567" or "+92 300 1234567"), but only when exactly one client
+// has it.
+const findUserForLogin = async (identifier) => {
+  if (!identifier) return null;
+  if (identifier.includes("@")) {
+    return User.findOne({ email: identifier.toLowerCase() });
+  }
+  const digits = identifier.replace(/\D/g, "").replace(/^0+/, "");
+  if (digits.length < 9) return null;
+  const candidates = await Client.find(
+    { phone_number: { $regex: `${digits.slice(-9)}$` } },
+    { phone_number: 1, user_ref: 1 },
+  ).lean();
+  const matches = candidates.filter((c) =>
+    c.phone_number.replace(/\D/g, "").endsWith(digits),
+  );
+  if (matches.length !== 1) return null;
+  return User.findOne({ _id: matches[0].user_ref, role: "client" });
+};
+
+// @desc Log in with email (or phone number) and password
 const login = async (req, res) => {
-  const { email, password } = req.body;
+  const identifier = String(req.body.email ?? "").trim();
+  const password =
+    typeof req.body.password === "string" ? req.body.password : "";
 
   try {
-    const user = await User.findOne({ email });
+    const user = await findUserForLogin(identifier);
 
-    if (user && (await user.matchPassword(password))) {
+    // Phone keyboards and password autofill often add a space at the end;
+    // try the password exactly as typed first, then without it.
+    const trimmed = password.trim();
+    const passwordMatches =
+      user &&
+      ((await user.matchPassword(password)) ||
+        (trimmed !== password &&
+          trimmed.length > 0 &&
+          (await user.matchPassword(trimmed))));
+
+    if (passwordMatches) {
       let client_id = null;
       if (user.role === "client") {
         const client = await Client.findOne({ user_ref: user._id });
@@ -95,7 +132,10 @@ const login = async (req, res) => {
         token: generateToken(user._id, user.role),
       });
     } else {
-      res.status(401).json({ message: "Invalid email or password" });
+      res.status(401).json({
+        message:
+          "Incorrect email, phone number or password. Check for typos, or use \"Forgot password?\" to set a new password.",
+      });
     }
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -132,7 +172,7 @@ const changePassword = async (req, res) => {
 
 // @desc Request a password reset email
 const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const email = String(req.body.email ?? "").trim().toLowerCase();
 
   try {
     const user = await User.findOne({ email });
@@ -150,7 +190,9 @@ const forgotPassword = async (req, res) => {
       .digest("hex");
 
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+    // An hour: emails can take minutes to arrive and aren't always opened
+    // straight away — 5 minutes was locking people out.
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000;
     await user.save();
 
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
@@ -194,6 +236,7 @@ const resetPassword = async (req, res) => {
     }
 
     user.password = password;
+    user.password_set = true;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();

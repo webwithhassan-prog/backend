@@ -9,6 +9,8 @@ const {
   freezeClient,
   resumeClient,
   extendClient,
+  updateClient,
+  resetClientPassword,
   banClient,
   unbanClient,
   deleteClient,
@@ -27,6 +29,8 @@ router.get("/:id", protect, getClientById);
 router.put("/:id/freeze", protect, adminOnly, freezeClient);
 router.put("/:id/resume", protect, adminOnly, resumeClient);
 router.put("/:id/extend", protect, adminOnly, extendClient);
+router.put("/:id/details", protect, adminOnly, updateClient);
+router.put("/:id/reset-password", protect, adminOnly, resetClientPassword);
 router.put("/:id/ban", protect, adminOnly, banClient);
 router.put("/:id/unban", protect, adminOnly, unbanClient);
 router.delete("/:id", protect, adminOnly, deleteClient);
