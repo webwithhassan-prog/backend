@@ -40,6 +40,7 @@ const recordedGalleryRoutes = require("./routes/recordedGalleryRoutes");
 const heroBannerRoutes = require("./routes/heroBannerRoutes");
 const manualPaymentMethodRoutes = require("./routes/manualPaymentMethodRoutes");
 const issueReportRoutes = require("./routes/issueReportRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 const adminAlertRoutes = require("./routes/adminAlertRoutes");
 const { startDietplanScheduler } = require("./utils/dietplanScheduler");
 const { startClassScheduler } = require("./utils/classScheduler");
@@ -157,6 +158,7 @@ app.use("/api/recorded-gallery", recordedGalleryRoutes);
 app.use("/api/hero-banners", heroBannerRoutes);
 app.use("/api/manual-payment-methods", manualPaymentMethodRoutes);
 app.use("/api/issues", issueReportRoutes);
+app.use("/api/reviews", reviewRoutes);
 app.use("/api/admin-alerts", adminAlertRoutes);
 
 // Final safety net — every route above catches and JSON-responds to its own

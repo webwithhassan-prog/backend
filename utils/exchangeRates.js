@@ -54,14 +54,17 @@ const getInrExchangeRates = async () => {
 // Converts an INR amount to whatever currency code was selected at checkout
 // (falls back to the rate at payment-completion time — the exact rate at
 // the moment of purchase isn't stored, so this is a close approximation).
+// Rounded the same way the website shows prices (utils/currencyRounding).
 const convertFromInr = async (inrAmount, currencyCode) => {
   if (!currencyCode || currencyCode === "INR") {
-    return Math.round(inrAmount * 100) / 100;
+    return roundForCurrency(inrAmount, "INR");
   }
   const rates = await getInrExchangeRates();
   const rate = rates[currencyCode];
-  if (!rate) return Math.round(inrAmount * 100) / 100;
-  return Math.round(inrAmount * rate * 100) / 100;
+  if (!rate) return roundForCurrency(inrAmount, "INR");
+  return roundForCurrency(inrAmount * rate, currencyCode);
 };
+
+const { roundForCurrency } = require("./currencyRounding");
 
 module.exports = { getInrExchangeRates, convertFromInr };

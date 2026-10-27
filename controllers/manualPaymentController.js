@@ -291,21 +291,14 @@ const completeSingleItemPayment = async ({
   adminId,
 }) => {
   payment.status = "completed";
-  payment.amount_settled = payment.amount;
+  payment.amount_settled = null; // paid by hand, not via Stripe in GBP
   payment.amount_display = await convertFromInr(payment.amount, payment.currency_code);
   payment.invoice_number = await getNextInvoiceNumber();
   payment.verified_by = adminId;
   payment.verified_at = new Date();
   await payment.save();
 
-  await SalesLog.create({
-    category,
-    amount: payment.amount,
-    amount_settled: payment.amount_settled,
-    currency_code: payment.currency_code,
-    amount_display: payment.amount_display,
-    payment_ref: payment._id,
-  });
+  // No sales-log entry: the sales log is website (card) payments only.
 
   try {
     const user = await User.findById(client.user_ref);
@@ -315,11 +308,12 @@ const completeSingleItemPayment = async ({
           {
             name: itemDoc?.title || (category === "ebook" ? "E-Book" : "Course"),
             amount: payment.amount,
-            amountSettled: payment.amount_settled,
+            amountDisplay: payment.amount_display,
           },
         ],
         total: payment.amount,
-        totalSettled: payment.amount_settled,
+        currencyCode: payment.currency_code,
+        totalDisplay: payment.amount_display,
         paidAt: payment.updatedAt,
         clientName: client.name,
         invoiceNumber: payment.invoice_number,
@@ -445,6 +439,7 @@ const confirmManualPayment = async (req, res) => {
 
       const invoiceNumber = await getNextInvoiceNumber();
       const receiptItems = [];
+      let receiptCurrency = null;
 
       for (const p of batchPayments) {
         const plan = await Plan.findById(p.plan_ref);
@@ -471,7 +466,7 @@ const confirmManualPayment = async (req, res) => {
 
         const slipUrl = p.slip_url;
         p.status = "completed";
-        p.amount_settled = p.amount;
+        p.amount_settled = null; // paid by hand, not via Stripe in GBP
         p.amount_display = await convertFromInr(p.amount, p.currency_code);
         p.invoice_number = invoiceNumber;
         p.verified_by = req.user._id;
@@ -480,19 +475,13 @@ const confirmManualPayment = async (req, res) => {
         await p.save();
         await deleteCloudinaryImage(slipUrl);
 
-        await SalesLog.create({
-          category: "package",
-          amount: p.amount,
-          amount_settled: p.amount_settled,
-          currency_code: p.currency_code,
-          amount_display: p.amount_display,
-          payment_ref: p._id,
-        });
+        // No sales-log entry: the sales log is website (card) payments only.
         receiptItems.push({
           name: planDisplayName(plan),
           amount: p.amount,
-          amountSettled: p.amount_settled,
+          amountDisplay: p.amount_display,
         });
+        receiptCurrency = p.currency_code;
       }
 
       client.status = "active";
@@ -512,8 +501,9 @@ const confirmManualPayment = async (req, res) => {
             await sendPaymentReceiptEmail(user.email, {
               items: receiptItems,
               total: receiptItems.reduce((sum, item) => sum + item.amount, 0),
-              totalSettled: receiptItems.reduce(
-                (sum, item) => sum + (item.amountSettled || 0),
+              currencyCode: receiptCurrency,
+              totalDisplay: receiptItems.reduce(
+                (sum, item) => sum + (item.amountDisplay || 0),
                 0,
               ),
               paidAt: new Date(),
