@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const Client = require("../models/Client");
 const User = require("../models/User");
 const { attachComputedAccess } = require("../utils/clientAccess");
+const { forgetSession } = require("../middleware/auth");
 
 // @desc Get all clients (Enrollments)
 const getClients = async (req, res) => {
@@ -268,6 +269,7 @@ const updateClient = async (req, res) => {
     try {
       await client.save();
       if (user?.isModified()) await user.save();
+      forgetSession(client.user_ref);
     } catch (err) {
       if (err.code === 11000) {
         return fail(
@@ -300,6 +302,7 @@ const resetClientPassword = async (req, res) => {
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();
+    forgetSession(user._id);
 
     res.json({ email: user.email, password });
   } catch (err) {
@@ -318,6 +321,7 @@ const banClient = async (req, res) => {
       { new: true },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
+    forgetSession(client.user_ref);
     res.json(attachComputedAccess(client));
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -333,6 +337,7 @@ const unbanClient = async (req, res) => {
       { new: true },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
+    forgetSession(client.user_ref);
     res.json(attachComputedAccess(client));
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -346,6 +351,7 @@ const deleteClient = async (req, res) => {
   try {
     const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
+    forgetSession(client.user_ref);
 
     await User.findByIdAndDelete(client.user_ref);
     await client.deleteOne();

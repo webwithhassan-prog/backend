@@ -2,6 +2,36 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Client = require("../models/Client");
 
+// The database (Mumbai) is a long way from the server (Oregon): every
+// lookup costs about a quarter of a second. Every authenticated request
+// used to look the user up again, so a dashboard paid that several times
+// over. The result is kept for a minute per user; anything that changes
+// whether someone may use the site (ban, unban, edit, password reset,
+// delete) calls forgetSession() so it applies immediately.
+const SESSION_TTL_MS = 60 * 1000;
+const MAX_SESSIONS = 5000;
+const sessions = new Map(); // userId -> { user, banned, expires }
+
+const forgetSession = (userId) => {
+  if (userId) sessions.delete(String(userId));
+};
+
+const loadSession = async (userId) => {
+  const hit = sessions.get(userId);
+  if (hit && hit.expires > Date.now()) return hit;
+
+  const [user, client] = await Promise.all([
+    User.findById(userId).select("_id email role").lean(),
+    Client.findOne({ user_ref: userId }).select("banned").lean(),
+  ]);
+  const entry = { user, banned: !!client?.banned, expires: Date.now() + SESSION_TTL_MS };
+  if (user) {
+    if (sessions.size >= MAX_SESSIONS) sessions.clear();
+    sessions.set(userId, entry);
+  }
+  return entry;
+};
+
 const protect = async (req, res, next) => {
   let token;
 
@@ -13,13 +43,7 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Both lookups key off the token's user id, so they run in parallel —
-      // one database round trip per authenticated request instead of two
-      // (the database is a long way from the server, so each one counts).
-      const [user, client] = await Promise.all([
-        User.findById(decoded.id).select("-password"),
-        Client.findOne({ user_ref: decoded.id }).select("banned"),
-      ]);
+      const { user, banned } = await loadSession(String(decoded.id));
 
       req.user = user;
       if (!req.user) {
@@ -28,7 +52,7 @@ const protect = async (req, res, next) => {
 
       // A client's JWT can outlive an admin banning them mid-session, so
       // this is checked on every request, not just at login.
-      if (req.user.role === "client" && client?.banned) {
+      if (req.user.role === "client" && banned) {
         return res.status(403).json({
           message: "This account has been banned. Contact support for help.",
           banned: true,
@@ -61,4 +85,4 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { protect, optionalAuth };
+module.exports = { protect, optionalAuth, forgetSession };

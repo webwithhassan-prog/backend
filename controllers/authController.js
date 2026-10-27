@@ -34,26 +34,77 @@ const registerClient = async (req, res) => {
       });
     }
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ message: "User already exists" });
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPhone = String(phone_number || "").trim();
+    if (!cleanEmail || !String(name || "").trim() || !cleanPhone) {
+      return res
+        .status(400)
+        .json({ message: "Name, email and WhatsApp number are required." });
     }
 
-    const user = await User.create({ email, password, role: "client" });
+    // Checked before anything is created. Signup used to create the login
+    // first and the client profile second; when the profile failed (most
+    // often a WhatsApp number already registered) the login was left
+    // behind with no profile, and a second signup attempt then hit "User
+    // already exists" — so people logged in with the password from their
+    // second try and got "incorrect password".
+    const [existingUser, phoneTaken] = await Promise.all([
+      User.findOne({ email: cleanEmail }),
+      Client.exists({ phone_number: cleanPhone }),
+    ]);
+    if (existingUser) {
+      const hasProfile =
+        existingUser.role !== "client" ||
+        (await Client.exists({ user_ref: existingUser._id }));
+      if (hasProfile) {
+        return res.status(400).json({
+          message:
+            'An account with this email already exists. Log in, or use "Forgot password?" to set a new password.',
+        });
+      }
+      // A signup that never finished: nothing is attached to it (no
+      // profile, purchases or payments), so start it again cleanly.
+      await User.deleteOne({ _id: existingUser._id });
+    }
+    if (phoneTaken) {
+      return res.status(400).json({
+        message:
+          'This WhatsApp number is already registered. Log in with it (you can use the number instead of your email), or use "Forgot password?".',
+      });
+    }
+
+    const user = await User.create({
+      email: cleanEmail,
+      password,
+      role: "client",
+    });
 
     const { country, country_code } = await detectCountry(req, {
       timeZone: req.body.timezone,
     });
 
-    const client = await Client.create({
-      user_ref: user._id,
-      name,
-      phone_number,
-      status: "expired",
-      days_remaining: 0,
-      country,
-      country_code,
-    });
+    let client;
+    try {
+      client = await Client.create({
+        user_ref: user._id,
+        name,
+        phone_number: cleanPhone,
+        status: "expired",
+        days_remaining: 0,
+        country,
+        country_code,
+      });
+    } catch (err) {
+      // Never leave a login without its profile.
+      await User.deleteOne({ _id: user._id });
+      if (err.code === 11000) {
+        return res.status(400).json({
+          message:
+            'This WhatsApp number is already registered. Log in with it, or use "Forgot password?".',
+        });
+      }
+      throw err;
+    }
 
     res.status(201).json({
       _id: user._id,
@@ -121,7 +172,14 @@ const login = async (req, res) => {
             banned: true,
           });
         }
-        client_id = client?._id || null;
+        if (!client) {
+          return res.status(409).json({
+            message:
+              "Your sign-up didn't finish. Please sign up again with this email — it only takes a minute.",
+            signup_incomplete: true,
+          });
+        }
+        client_id = client._id;
       }
 
       res.json({

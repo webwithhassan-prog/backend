@@ -4,7 +4,8 @@
 // requests within the TTL are served from memory. Any successful write by an
 // admin clears the whole cache, so admin edits still show up immediately;
 // data written by background jobs is at most one TTL stale.
-const DEFAULT_TTL_MS = 60 * 1000;
+// 5 minutes: with the server far from the database, a miss costs seconds.
+const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_ENTRIES = 500;
 
 const cache = new Map(); // originalUrl -> { body, expires }
