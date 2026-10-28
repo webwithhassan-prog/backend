@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Client = require("../models/Client");
 const { sendPasswordResetEmail } = require("../services/emailService");
 const { detectCountry } = require("../utils/geolocation");
+const { countryFromPhone } = require("../utils/countryFromPhone");
 
 // Admin sessions carry real operational power (client bans, payments,
 // content, settings), so they're kept short-lived — a stolen/forgotten
@@ -79,9 +80,14 @@ const registerClient = async (req, res) => {
       role: "client",
     });
 
-    const { country, country_code } = await detectCountry(req, {
+    // Where they are (edge / timezone / IP); if that's unknown, the
+    // country of their WhatsApp number.
+    const detected = await detectCountry(req, {
       timeZone: req.body.timezone,
     });
+    const { country, country_code } = detected.country_code
+      ? detected
+      : countryFromPhone(cleanPhone);
 
     let client;
     try {
@@ -340,6 +346,7 @@ const completeAccountSetup = async (req, res) => {
     if (!client) return res.status(404).json({ message: "Client not found" });
 
     client.phone_number = phone_number;
+    if (!client.country_code) Object.assign(client, countryFromPhone(phone_number));
     try {
       await client.save();
     } catch (err) {

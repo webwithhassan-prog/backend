@@ -3,6 +3,7 @@ const Client = require("../models/Client");
 const User = require("../models/User");
 const { attachComputedAccess } = require("../utils/clientAccess");
 const { forgetSession } = require("../middleware/auth");
+const { countryFromPhone } = require("../utils/countryFromPhone");
 
 // @desc Get all clients (Enrollments)
 const getClients = async (req, res) => {
@@ -14,10 +15,12 @@ const getClients = async (req, res) => {
     ).lean();
     const emailByUser = new Map(users.map((u) => [u._id.toString(), u.email]));
     res.json(
-      clients.map((c) => ({
-        ...attachComputedAccess(c),
-        email: emailByUser.get(c.user_ref.toString()) || null,
-      })),
+      clients.map((c) => {
+        const out = attachComputedAccess(c);
+        // Older clients saved without a country show their number's.
+        if (!out.country_code) Object.assign(out, countryFromPhone(out.phone_number));
+        return { ...out, email: emailByUser.get(c.user_ref.toString()) || null };
+      }),
     );
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -55,6 +58,7 @@ const createClient = async (req, res) => {
       name,
       phone_number,
       status: "expired",
+      ...countryFromPhone(phone_number),
     });
 
     res.status(201).json({
@@ -215,6 +219,15 @@ const updateClient = async (req, res) => {
     if (body.phone_number !== undefined) {
       const phone = String(body.phone_number).trim();
       if (!phone) return fail("Phone number can't be empty.");
+      // A new number from another country moves the client's country too.
+      const fromNewPhone = countryFromPhone(phone);
+      if (
+        phone !== client.phone_number &&
+        fromNewPhone.country_code &&
+        fromNewPhone.country_code !== countryFromPhone(client.phone_number).country_code
+      ) {
+        Object.assign(client, fromNewPhone);
+      }
       client.phone_number = phone;
     }
     if (body.country !== undefined) {

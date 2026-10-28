@@ -5,6 +5,7 @@ const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
   getPublicMethodsForCountry,
+  getPublicMethodCountries,
   getAllMethods,
   createMethod,
   updateMethod,
@@ -12,6 +13,7 @@ const {
 } = require("../controllers/manualPaymentMethodController");
 
 router.get("/public", cachePublic(), getPublicMethodsForCountry);
+router.get("/public/countries", cachePublic(), getPublicMethodCountries);
 router.get("/", protect, adminOnly, getAllMethods);
 router.post("/", protect, adminOnly, createMethod);
 router.put("/:id", protect, adminOnly, updateMethod);

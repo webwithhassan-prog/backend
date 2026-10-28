@@ -16,6 +16,17 @@ const getPublicMethodsForCountry = async (req, res) => {
   }
 };
 
+// @desc Public — the countries that have at least one active method, so
+// checkout can offer "Paying from Pakistan or Saudi Arabia?" to anyone.
+const getPublicMethodCountries = async (req, res) => {
+  try {
+    const codes = await ManualPaymentMethod.distinct("country_code", { active: true });
+    res.json(codes.filter(Boolean).sort());
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // @desc Admin — every method, every country, including inactive ones
 const getAllMethods = async (req, res) => {
   try {
@@ -67,6 +78,7 @@ const deleteMethod = async (req, res) => {
 };
 
 module.exports = {
+  getPublicMethodCountries,
   getPublicMethodsForCountry,
   getAllMethods,
   createMethod,

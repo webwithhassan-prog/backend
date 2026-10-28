@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Client = require("../models/Client");
 const { sendAccountSetupEmail } = require("../services/emailService");
 const { lookupCountryFromIp } = require("./geolocation");
+const { countryFromPhone } = require("./countryFromPhone");
 
 const SETUP_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
 
@@ -41,7 +42,10 @@ const findOrCreateGuestAccount = async ({ name, phone, email, ip, itemLabel }) =
     accountSetupExpires: Date.now() + SETUP_TOKEN_TTL_MS,
   });
 
-  const { country, country_code } = await lookupCountryFromIp(ip);
+  // The IP lookup is rate-limited and often comes back empty — the
+  // WhatsApp number's country code is the fallback.
+  const fromIp = await lookupCountryFromIp(ip);
+  const { country, country_code } = fromIp.country_code ? fromIp : countryFromPhone(phone);
 
   let client;
   try {
