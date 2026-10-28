@@ -24,6 +24,16 @@ const {
   couponAppliesToType,
 } = require("../utils/couponDiscount");
 
+// Where newly bought days start: the end of the client's current access
+// if it's still running, otherwise now. Renewing early used to count the
+// new days from today, so a client with 10 days left who bought 30 ended
+// up with 30, not 40 — the days they'd already paid for were lost.
+const accessStartFor = (client) => {
+  const now = new Date();
+  const current = client.access_expires_at ? new Date(client.access_expires_at) : null;
+  return current && current > now ? current : now;
+};
+
 const PLAN_TYPE_LABELS = {
   dietplan: "Dietplan",
   workout: "Live Workout Sessions",
@@ -441,11 +451,13 @@ const confirmManualPayment = async (req, res) => {
       const receiptItems = [];
       let receiptCurrency = null;
 
+      // Bought days go after any days the client still has left.
+      const startFrom = accessStartFor(client);
       for (const p of batchPayments) {
         const plan = await Plan.findById(p.plan_ref);
         if (!plan) continue;
 
-        const expiresAt = new Date();
+        const expiresAt = new Date(startFrom);
         expiresAt.setDate(expiresAt.getDate() + plan.duration_days);
         client.active_plans.push({
           plan_ref: plan._id,

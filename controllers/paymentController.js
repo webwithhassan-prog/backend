@@ -340,6 +340,16 @@ const createCourseCheckout = async (req, res) => {
   }
 };
 
+// Where newly bought days start: the end of the client's current access
+// if it's still running, otherwise now. Renewing early used to count the
+// new days from today, so a client with 10 days left who bought 30 ended
+// up with 30, not 40 — the days they'd already paid for were lost.
+const accessStartFor = (client) => {
+  const now = new Date();
+  const current = client.access_expires_at ? new Date(client.access_expires_at) : null;
+  return current && current > now ? current : now;
+};
+
 // Grants whatever a completed Checkout Session paid for. Runs at most once
 // per Stripe event — see stripeWebhook.
 const handleCheckoutCompleted = async (session) => {
@@ -496,8 +506,10 @@ const handleCheckoutCompleted = async (session) => {
   // they're one purchase and should share one invoice number.
   const invoiceNumber = await getNextInvoiceNumber();
 
+  // Bought days go after any days the client still has left.
+  const startFrom = accessStartFor(client);
   for (const plan of plans) {
-    const expiresAt = new Date();
+    const expiresAt = new Date(startFrom);
     expiresAt.setDate(expiresAt.getDate() + plan.duration_days);
 
     client.active_plans.push({
