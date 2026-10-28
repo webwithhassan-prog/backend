@@ -24,7 +24,7 @@ const createHeroBanner = async (req, res) => {
 const updateHeroBanner = async (req, res) => {
   try {
     const banner = await HeroBanner.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!banner) return res.status(404).json({ message: "Banner not found" });

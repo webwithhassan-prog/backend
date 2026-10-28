@@ -34,7 +34,7 @@ const createEbook = async (req, res) => {
 const updateEbook = async (req, res) => {
   try {
     const ebook = await EBook.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!ebook) return res.status(404).json({ message: "E-book not found" });

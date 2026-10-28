@@ -57,7 +57,7 @@ const updateMethod = async (req, res) => {
     const method = await ManualPaymentMethod.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     if (!method) return res.status(404).json({ message: "Method not found" });
     res.json(method);

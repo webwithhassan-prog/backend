@@ -57,7 +57,7 @@ const updateRecording = async (req, res) => {
     const updated = await RecordedGallery.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     if (!updated) return res.status(404).json({ message: "Recording not found" });
     res.json(updated);

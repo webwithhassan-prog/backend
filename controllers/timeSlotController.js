@@ -29,7 +29,7 @@ const createTimeSlot = async (req, res) => {
 const updateTimeSlot = async (req, res) => {
   try {
     const slot = await TimeSlot.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!slot) return res.status(404).json({ message: "Time slot not found" });

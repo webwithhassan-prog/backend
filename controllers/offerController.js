@@ -36,7 +36,7 @@ const createOffer = async (req, res) => {
 const updateOffer = async (req, res) => {
   try {
     const offer = await Offer.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!offer) return res.status(404).json({ message: "Offer not found" });

@@ -97,7 +97,7 @@ const freezeClient = async (req, res) => {
     const client = await Client.findByIdAndUpdate(
       req.params.id,
       { status: "paused" },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
     res.json(attachComputedAccess(client));
@@ -112,7 +112,7 @@ const resumeClient = async (req, res) => {
     const client = await Client.findByIdAndUpdate(
       req.params.id,
       { status: "active" },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
     res.json(attachComputedAccess(client));
@@ -331,7 +331,7 @@ const banClient = async (req, res) => {
     const client = await Client.findByIdAndUpdate(
       req.params.id,
       { banned: true, ban_reason: reason || null },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
     forgetSession(client.user_ref);
@@ -347,7 +347,7 @@ const unbanClient = async (req, res) => {
     const client = await Client.findByIdAndUpdate(
       req.params.id,
       { banned: false, ban_reason: null },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!client) return res.status(404).json({ message: "Client not found" });
     forgetSession(client.user_ref);

@@ -50,7 +50,7 @@ const saveMyReview = async (req, res) => {
     const review = await Review.findOneAndUpdate(
       { client_ref: client._id },
       { rating, text, display_name, status: "pending" },
-      { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true, runValidators: true },
     );
     res.status(201).json(review);
   } catch (err) {
@@ -96,7 +96,7 @@ const updateReviewStatus = async (req, res) => {
     if (!["pending", "approved", "rejected"].includes(status)) {
       return res.status(400).json({ message: "Status must be pending, approved or rejected." });
     }
-    const review = await Review.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    const review = await Review.findByIdAndUpdate(req.params.id, { status }, { returnDocument: "after" });
     if (!review) return res.status(404).json({ message: "Review not found" });
     res.json(review);
   } catch (err) {

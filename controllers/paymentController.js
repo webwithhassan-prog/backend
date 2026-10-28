@@ -372,7 +372,7 @@ const handleCheckoutCompleted = async (session) => {
       const payment = await Payment.findOneAndUpdate(
         { stripe_session_id: session.id, ebook_ref: ebook_id, status: "pending" },
         { status: "completed", amount_settled: session.amount_total / 100 },
-        { new: true, sort: { createdAt: -1 } },
+        { returnDocument: "after", sort: { createdAt: -1 } },
       );
       if (payment) {
         payment.amount_display = await convertFromInr(
@@ -433,7 +433,7 @@ const handleCheckoutCompleted = async (session) => {
       const payment = await Payment.findOneAndUpdate(
         { stripe_session_id: session.id, course_ref: course_id, status: "pending" },
         { status: "completed", amount_settled: session.amount_total / 100 },
-        { new: true, sort: { createdAt: -1 } },
+        { returnDocument: "after", sort: { createdAt: -1 } },
       );
       if (payment) {
         payment.amount_display = await convertFromInr(
@@ -532,7 +532,7 @@ const handleCheckoutCompleted = async (session) => {
     const payment = await Payment.findOneAndUpdate(
       { stripe_session_id: session.id, plan_ref: plan._id, status: "pending" },
       { status: "completed" },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (payment) {
       payment.amount_settled = (await inrToGbpPence(payment.amount)) / 100;

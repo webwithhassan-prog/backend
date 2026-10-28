@@ -125,6 +125,22 @@ app.use(express.json());
 app.use(sanitizeMongoInput);
 app.use(invalidateOnAdminWrite);
 
+// Controllers answer failures with res.status(500).json({ message }) and
+// don't log them, so a broken flow (e.g. reviews failing on a duplicate
+// key) only surfaced when a client sent a photo. Log every 5xx reply.
+app.use((req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode >= 500) {
+      console.error(
+        `[${res.statusCode}] ${req.method} ${req.originalUrl.split("?")[0]}: ${body?.message || ""}`,
+      );
+    }
+    return json(body);
+  };
+  next();
+});
+
 app.get("/", (req, res) => {
   res.send("Fitness Platform API running");
 });

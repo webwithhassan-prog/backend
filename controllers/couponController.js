@@ -91,7 +91,7 @@ const updateCoupon = async (req, res) => {
     const payload = { ...req.body };
     if (payload.code) payload.code = payload.code.trim().toUpperCase();
     const coupon = await Coupon.findByIdAndUpdate(req.params.id, payload, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!coupon) return res.status(404).json({ message: "Coupon not found" });

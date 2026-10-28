@@ -29,7 +29,7 @@ const updateTransformationVideo = async (req, res) => {
     const video = await TransformationVideo.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true },
+      { returnDocument: "after", runValidators: true },
     );
     if (!video) return res.status(404).json({ message: "Video not found" });
     res.json(video);

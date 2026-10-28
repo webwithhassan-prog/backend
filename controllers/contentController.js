@@ -52,7 +52,7 @@ const updateContent = async (req, res) => {
       req.params.id,
       req.body,
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       },
     );

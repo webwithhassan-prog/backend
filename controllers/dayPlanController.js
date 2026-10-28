@@ -19,7 +19,7 @@ const setDayPlan = async (req, res) => {
     const plan = await DayPlan.findOneAndUpdate(
       { day_of_week: Number(day_of_week) },
       { type },
-      { new: true, upsert: true, runValidators: true }
+      { returnDocument: "after", upsert: true, runValidators: true }
     );
     res.json(plan);
   } catch (err) {

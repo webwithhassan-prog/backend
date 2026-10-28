@@ -60,7 +60,7 @@ const rejectApplication = async (req, res) => {
     const application = await Application.findByIdAndUpdate(
       req.params.id,
       { status: "rejected" },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!application)
       return res.status(404).json({ message: "Application not found" });

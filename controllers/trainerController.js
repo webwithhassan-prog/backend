@@ -24,7 +24,7 @@ const createTrainer = async (req, res) => {
 const updateTrainer = async (req, res) => {
   try {
     const trainer = await Trainer.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!trainer) return res.status(404).json({ message: "Trainer not found" });

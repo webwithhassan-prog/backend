@@ -36,7 +36,7 @@ const setToday = async (req, res) => {
     const log = await DailyLog.findOneAndUpdate(
       { client_ref: client._id, date: todayString() },
       { steps, water_liters },
-      { new: true, upsert: true, runValidators: true },
+      { returnDocument: "after", upsert: true, runValidators: true },
     );
 
     res.json(log);

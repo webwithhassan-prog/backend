@@ -87,7 +87,7 @@ const createClass = async (req, res) => {
 const updateClass = async (req, res) => {
   try {
     const updated = await Class.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!updated) return res.status(404).json({ message: 'Class not found' });
@@ -116,7 +116,7 @@ const cancelClass = async (req, res) => {
     const updated = await Class.findByIdAndUpdate(
       req.params.id,
       { status: 'cancelled', cancel_reason: reason },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!updated) return res.status(404).json({ message: 'Class not found' });
     res.json(updated);
@@ -131,7 +131,7 @@ const restoreClass = async (req, res) => {
     const updated = await Class.findByIdAndUpdate(
       req.params.id,
       { status: 'scheduled', cancel_reason: null },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!updated) return res.status(404).json({ message: 'Class not found' });
     res.json(updated);

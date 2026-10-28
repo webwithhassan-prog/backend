@@ -52,7 +52,7 @@ const updateIssueReport = async (req, res) => {
     const report = await IssueReport.findByIdAndUpdate(
       req.params.id,
       { status },
-      { new: true },
+      { returnDocument: "after" },
     );
     if (!report) return res.status(404).json({ message: "Report not found" });
     res.json(report);

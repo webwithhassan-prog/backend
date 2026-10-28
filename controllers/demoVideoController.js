@@ -24,7 +24,7 @@ const createDemoVideo = async (req, res) => {
 const updateDemoVideo = async (req, res) => {
   try {
     const video = await DemoVideo.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
     if (!video) return res.status(404).json({ message: "Video not found" });
