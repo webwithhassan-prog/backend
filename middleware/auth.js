@@ -39,10 +39,19 @@ const protect = async (req, res, next) => {
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
   ) {
+    let decoded;
     try {
       token = req.headers.authorization.split(" ")[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: "Not authorized, token failed" });
+    }
 
+    // A database hiccup (slow query, a deploy restarting) used to land in
+    // the same catch as a bad token and answer 401 — and the website treats
+    // 401 as "session over", signing the client out. A failed lookup is a
+    // temporary server problem, not a reason to end their session.
+    try {
       const { user, banned } = await loadSession(String(decoded.id));
 
       req.user = user;
@@ -58,11 +67,13 @@ const protect = async (req, res, next) => {
           banned: true,
         });
       }
-
-      next();
     } catch (err) {
-      return res.status(401).json({ message: "Not authorized, token failed" });
+      console.error("Session lookup failed:", err.message);
+      return res
+        .status(503)
+        .json({ message: "Couldn't reach the server — please try again." });
     }
+    next();
   } else {
     return res.status(401).json({ message: "Not authorized, no token" });
   }
