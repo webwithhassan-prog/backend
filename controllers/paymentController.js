@@ -12,7 +12,11 @@ const {
   sendPaymentReceiptEmail,
   sendFulfillmentFailedAlertEmail,
 } = require("../services/emailService");
-const { inrToGbpPence } = require("../utils/currency");
+const {
+  inrToGbpPence,
+  stripeAmountFor,
+  settledGbpFor,
+} = require("../utils/currency");
 const { convertFromInr } = require("../utils/exchangeRates");
 const { getNextInvoiceNumber } = require("../models/Counter");
 const { completeCustomInvoice } = require("./customInvoiceController");
@@ -186,11 +190,10 @@ const createStripeCheckout = async (req, res) => {
     const line_items = await Promise.all(
       pricedPlans.map(async ({ plan, finalPrice }) => ({
         price_data: {
-          currency: "gbp",
+          ...(await stripeAmountFor(finalPrice, currency_code)),
           product_data: {
             name: planDisplayName(plan),
           },
-          unit_amount: await inrToGbpPence(finalPrice),
         },
         quantity: 1,
       })),
@@ -257,9 +260,8 @@ const createEbookCheckout = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "gbp",
+            ...(await stripeAmountFor(ebook.price, currency_code)),
             product_data: { name: ebook.title, tax_code: TAX_CODES.ebook },
-            unit_amount: await inrToGbpPence(ebook.price),
           },
           quantity: 1,
         },
@@ -305,9 +307,8 @@ const createCourseCheckout = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "gbp",
+            ...(await stripeAmountFor(course.price, currency_code)),
             product_data: { name: course.title, tax_code: TAX_CODES.course },
-            unit_amount: await inrToGbpPence(course.price),
           },
           quantity: 1,
         },
@@ -371,10 +372,11 @@ const handleCheckoutCompleted = async (session) => {
 
       const payment = await Payment.findOneAndUpdate(
         { stripe_session_id: session.id, ebook_ref: ebook_id, status: "pending" },
-        { status: "completed", amount_settled: session.amount_total / 100 },
+        { status: "completed" },
         { returnDocument: "after", sort: { createdAt: -1 } },
       );
       if (payment) {
+        payment.amount_settled = await settledGbpFor(session, payment.amount);
         payment.amount_display = await convertFromInr(
           payment.amount,
           payment.currency_code,
@@ -432,10 +434,11 @@ const handleCheckoutCompleted = async (session) => {
 
       const payment = await Payment.findOneAndUpdate(
         { stripe_session_id: session.id, course_ref: course_id, status: "pending" },
-        { status: "completed", amount_settled: session.amount_total / 100 },
+        { status: "completed" },
         { returnDocument: "after", sort: { createdAt: -1 } },
       );
       if (payment) {
+        payment.amount_settled = await settledGbpFor(session, payment.amount);
         payment.amount_display = await convertFromInr(
           payment.amount,
           payment.currency_code,

@@ -5,7 +5,7 @@ const CustomInvoice = require("../models/CustomInvoice");
 const Payment = require("../models/Payment");
 const SalesLog = require("../models/SalesLog");
 const { getNextInvoiceNumber } = require("../models/Counter");
-const { inrToGbpPence } = require("../utils/currency");
+const { stripeAmountFor, settledGbpFor } = require("../utils/currency");
 const { sendPaymentReceiptEmail } = require("../services/emailService");
 
 // Deterministic 8-char stamp of an invoice's true amount, keyed with the
@@ -59,9 +59,8 @@ const createCustomInvoice = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "gbp",
+            ...(await stripeAmountFor(Number(amount), invoice.currency_code)),
             product_data: { name: description },
-            unit_amount: await inrToGbpPence(Number(amount)),
           },
           quantity: 1,
         },
@@ -162,7 +161,7 @@ const completeCustomInvoice = async (session) => {
   const payment = await Payment.create({
     gateway: "stripe",
     amount: invoice.amount,
-    amount_settled: session.amount_total / 100,
+    amount_settled: await settledGbpFor(session, invoice.amount),
     currency_code: invoice.currency_code,
     amount_display: invoice.amount_display,
     status: "completed",
