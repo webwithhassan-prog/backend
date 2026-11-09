@@ -617,7 +617,16 @@ const stripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type !== "checkout.session.completed") {
+  // A card payment is paid when its checkout completes. A real-time method
+  // like UPI can complete checkout while the money is still confirming
+  // (payment_status "unpaid"); Stripe then sends async_payment_succeeded
+  // once it lands, and only that grants the purchase.
+  const session = event.data.object;
+  const grants =
+    (event.type === "checkout.session.completed" &&
+      session.payment_status !== "unpaid") ||
+    event.type === "checkout.session.async_payment_succeeded";
+  if (!grants) {
     return res.json({ received: true });
   }
 
