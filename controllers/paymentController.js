@@ -57,11 +57,15 @@ const guestCollectionFields = (isGuest) =>
               "Please enter a phone number that's active on WhatsApp — our team will contact you there to set up your plan.",
           },
         },
+        // Optional: card and UPI both ask for the payer's name already
+        // (UPI also needs a full address), so this only matters when
+        // someone pays for another person, e.g. a mother for her daughter.
         custom_fields: [
           {
             key: "full_name",
-            label: { type: "custom", custom: "Full Name" },
+            label: { type: "custom", custom: "Client's name (if different)" },
             type: "text",
+            optional: true,
           },
         ],
       }
@@ -72,7 +76,9 @@ const guestCollectionFields = (isGuest) =>
 const guestInfoFromSession = (session) => ({
   email: session.customer_details?.email,
   phone: session.customer_details?.phone,
-  name: session.custom_fields?.find((f) => f.key === "full_name")?.text?.value,
+  name:
+    session.custom_fields?.find((f) => f.key === "full_name")?.text?.value ||
+    session.customer_details?.name,
 });
 
 // Resolves which Client a completed session's purchase should be granted
