@@ -90,6 +90,13 @@ const updateCoupon = async (req, res) => {
   try {
     const payload = { ...req.body };
     if (payload.code) payload.code = payload.code.trim().toUpperCase();
+    // Renaming a coupon makes it a new promotion: its uses start again.
+    // Keeping the old count, a renamed code with a 3-use limit hit "usage
+    // limit reached" after a single real purchase.
+    if (payload.code) {
+      const existing = await Coupon.findById(req.params.id).select("code");
+      if (existing && existing.code !== payload.code) payload.used_count = 0;
+    }
     const coupon = await Coupon.findByIdAndUpdate(req.params.id, payload, {
       returnDocument: "after",
       runValidators: true,
