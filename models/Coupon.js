@@ -17,7 +17,7 @@ const couponSchema = new mongoose.Schema(
     },
     applies_to: {
       type: String,
-      enum: ["all", "dietplan", "workout"],
+      enum: ["all", "dietplan", "workout", "combo"],
       default: "all",
     },
     max_uses: {

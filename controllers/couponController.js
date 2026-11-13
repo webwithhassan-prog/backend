@@ -29,7 +29,11 @@ const validateCouponCode = async (req, res) => {
     if (!applicable) {
       return res.status(400).json({
         valid: false,
-        message: `This coupon only applies to ${coupon.applies_to} packages`,
+        message: `This coupon only applies to ${
+          { dietplan: "Dietplan", workout: "Home Workouts", combo: "Both Combined" }[
+            coupon.applies_to
+          ] || coupon.applies_to
+        } packages`,
       });
     }
 
