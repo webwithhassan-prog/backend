@@ -30,11 +30,23 @@ const runCheckinReminders = async () => {
   });
 
   for (const client of clients) {
+    // Mark as sent first, and only send if this run made the mark — two
+    // runs at once (timer + cron) can't both remind the same client.
+    const previous = client.last_checkin_reminder_sent_at ?? null;
+    const sentAt = new Date();
+    const { modifiedCount } = await Client.updateOne(
+      { _id: client._id, last_checkin_reminder_sent_at: previous },
+      { $set: { last_checkin_reminder_sent_at: sentAt } },
+    );
+    if (!modifiedCount) continue;
     try {
       await sendCheckinReminderPush(client);
-      client.last_checkin_reminder_sent_at = new Date();
-      await client.save();
     } catch (err) {
+      // Unmark so the next run tries again.
+      await Client.updateOne(
+        { _id: client._id, last_checkin_reminder_sent_at: sentAt },
+        { $set: { last_checkin_reminder_sent_at: previous } },
+      );
       console.error(
         `Check-in reminder failed for client ${client._id}:`,
         err.message,
@@ -43,15 +55,4 @@ const runCheckinReminders = async () => {
   }
 };
 
-const startCheckinReminderScheduler = () => {
-  runCheckinReminders().catch((err) =>
-    console.error("Check-in reminder scheduler error:", err.message),
-  );
-  setInterval(() => {
-    runCheckinReminders().catch((err) =>
-      console.error("Check-in reminder scheduler error:", err.message),
-    );
-  }, ONE_DAY_MS);
-};
-
-module.exports = { startCheckinReminderScheduler, runCheckinReminders };
+module.exports = { runCheckinReminders };

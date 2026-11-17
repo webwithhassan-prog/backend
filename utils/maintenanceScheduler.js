@@ -23,26 +23,11 @@ const runMaintenance = async () => {
     datetime: { $lt: new Date(now - PAST_CLASS_RETENTION_MS) },
   });
 
-  return {
-    abandonedCheckouts: abandoned.deletedCount,
-    oldClasses: oldClasses.deletedCount,
-  };
+  if (abandoned.deletedCount || oldClasses.deletedCount) {
+    console.log(
+      `Maintenance: removed ${abandoned.deletedCount} abandoned checkouts, ${oldClasses.deletedCount} old classes`,
+    );
+  }
 };
 
-const startMaintenanceScheduler = () => {
-  const run = () =>
-    runMaintenance()
-      .then(({ abandonedCheckouts, oldClasses }) => {
-        if (abandonedCheckouts || oldClasses) {
-          console.log(
-            `Maintenance: removed ${abandonedCheckouts} abandoned checkouts, ${oldClasses} old classes`,
-          );
-        }
-      })
-      .catch((err) => console.error("Maintenance scheduler error:", err.message));
-
-  run();
-  setInterval(run, ONE_DAY_MS);
-};
-
-module.exports = { runMaintenance, startMaintenanceScheduler };
+module.exports = { runMaintenance };

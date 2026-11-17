@@ -1,7 +1,6 @@
 const Client = require("../models/Client");
 
 const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 // Auto-deducts one diet plan for every client whose last delivery was 15+
 // days ago and who still has plans remaining in their quota. Flags the
@@ -9,35 +8,33 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const runDietplanAutoDeduction = async () => {
   const cutoff = new Date(Date.now() - FIFTEEN_DAYS_MS);
 
-  const dueClients = await Client.find({
+  const due = {
     has_dietplan: true,
     last_dietplan_delivered_at: { $ne: null, $lte: cutoff },
     $expr: { $lt: ["$diet_plans_used", "$diet_plans_total"] },
-  });
+  };
+  const dueClients = await Client.find(due).select("_id");
 
-  for (const client of dueClients) {
-    client.diet_plans_used += 1;
-    client.last_dietplan_delivered_at = new Date();
-    client.dietplan_notification_pending = true;
-    await client.save();
+  // Each deduction re-checks "still due" as it writes, so two runs at once
+  // (the app's timer and the hosting's cron) can't deduct a plan twice.
+  let processed = 0;
+  for (const { _id } of dueClients) {
+    const { modifiedCount } = await Client.updateOne(
+      { _id, ...due },
+      {
+        $inc: { diet_plans_used: 1 },
+        $set: {
+          last_dietplan_delivered_at: new Date(),
+          dietplan_notification_pending: true,
+        },
+      },
+    );
+    processed += modifiedCount;
   }
 
-  if (dueClients.length > 0) {
-    console.log(
-      `Dietplan auto-deduction: processed ${dueClients.length} client(s)`,
-    );
+  if (processed > 0) {
+    console.log(`Dietplan auto-deduction: processed ${processed} client(s)`);
   }
 };
 
-const startDietplanScheduler = () => {
-  runDietplanAutoDeduction().catch((err) =>
-    console.error("Dietplan scheduler error:", err.message),
-  );
-  setInterval(() => {
-    runDietplanAutoDeduction().catch((err) =>
-      console.error("Dietplan scheduler error:", err.message),
-    );
-  }, ONE_DAY_MS);
-};
-
-module.exports = { startDietplanScheduler, runDietplanAutoDeduction };
+module.exports = { runDietplanAutoDeduction };

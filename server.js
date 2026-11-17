@@ -42,11 +42,7 @@ const manualPaymentMethodRoutes = require("./routes/manualPaymentMethodRoutes");
 const issueReportRoutes = require("./routes/issueReportRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const adminAlertRoutes = require("./routes/adminAlertRoutes");
-const { startDietplanScheduler } = require("./utils/dietplanScheduler");
-const { startClassScheduler } = require("./utils/classScheduler");
-const { startClassReminderScheduler } = require("./utils/classReminderScheduler");
-const { startCheckinReminderScheduler } = require("./utils/checkinReminderScheduler");
-const { startMaintenanceScheduler } = require("./utils/maintenanceScheduler");
+const { startJobRunner, cronHandler } = require("./utils/jobRunner");
 
 const app = express();
 
@@ -68,15 +64,11 @@ connectDB().then(() => {
     console.log("Schedulers disabled (DISABLE_SCHEDULERS=1)");
     return;
   }
-  startDietplanScheduler();
-  // Automatic Zoom-API rotation is paused — the admin now sets the shared
-  // class Zoom link by hand (see timetableController.setZoomLink). The
-  // rotation code itself (utils/zoomLinkRotation.js, services/zoomService.js)
-  // is left in place, just unused, in case this needs to switch back later.
-  startClassScheduler();
-  startClassReminderScheduler();
-  startCheckinReminderScheduler();
-  startMaintenanceScheduler();
+  // Diet plan deduction, class schedule, reminders and cleanup — see
+  // utils/jobRunner.js. Automatic Zoom-API rotation is paused (the admin
+  // sets the class Zoom link by hand, see timetableController.setZoomLink);
+  // utils/zoomLinkRotation.js is left in place, unused, in case it returns.
+  startJobRunner();
 });
 
 // This API is deliberately consumed cross-origin (the frontend is a
@@ -144,6 +136,8 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.send("Fitness Platform API running");
 });
+// The hosting's cron calls this every 10 minutes (see utils/jobRunner.js).
+app.post("/api/cron/run", cronHandler);
 app.use("/api/auth", authRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/plans", planRoutes);

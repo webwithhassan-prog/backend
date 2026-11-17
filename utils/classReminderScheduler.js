@@ -42,11 +42,22 @@ const runClassReminders = async () => {
   if (todaysClasses.length === 0) return;
 
   for (const client of clients) {
+    // Mark today as sent first, and only send if this run made the mark —
+    // two runs at once (timer + cron) can't both remind the same client.
+    const previous = client.last_class_reminder_sent_date ?? null;
+    const { modifiedCount } = await Client.updateOne(
+      { _id: client._id, last_class_reminder_sent_date: previous },
+      { $set: { last_class_reminder_sent_date: todayDateString } },
+    );
+    if (!modifiedCount) continue;
     try {
       await sendClassReminderPush(client, todaysClasses);
-      client.last_class_reminder_sent_date = todayDateString;
-      await client.save();
     } catch (err) {
+      // Unmark so the next run tries again.
+      await Client.updateOne(
+        { _id: client._id, last_class_reminder_sent_date: todayDateString },
+        { $set: { last_class_reminder_sent_date: previous } },
+      );
       console.error(
         `Class reminder failed for client ${client._id}:`,
         err.message,
@@ -55,15 +66,4 @@ const runClassReminders = async () => {
   }
 };
 
-const startClassReminderScheduler = () => {
-  runClassReminders().catch((err) =>
-    console.error("Class reminder scheduler error:", err.message),
-  );
-  setInterval(() => {
-    runClassReminders().catch((err) =>
-      console.error("Class reminder scheduler error:", err.message),
-    );
-  }, POLL_MS);
-};
-
-module.exports = { startClassReminderScheduler, runClassReminders };
+module.exports = { runClassReminders, POLL_MS };
