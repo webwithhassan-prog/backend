@@ -43,6 +43,7 @@ const issueReportRoutes = require("./routes/issueReportRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const adminAlertRoutes = require("./routes/adminAlertRoutes");
 const { startJobRunner, cronHandler } = require("./utils/jobRunner");
+const { getBootstrap } = require("./controllers/bootstrapController");
 
 const app = express();
 
@@ -138,6 +139,8 @@ app.get("/", (req, res) => {
 });
 // The hosting's cron calls this every 10 minutes (see utils/jobRunner.js).
 app.post("/api/cron/run", cronHandler);
+// Everything a first page view needs in one request (see bootstrapController).
+app.get("/api/public/bootstrap", getBootstrap);
 app.use("/api/auth", authRoutes);
 app.use("/api/trainers", trainerRoutes);
 app.use("/api/plans", planRoutes);

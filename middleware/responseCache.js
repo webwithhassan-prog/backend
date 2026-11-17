@@ -10,10 +10,26 @@ const MAX_ENTRIES = 500;
 
 const cache = new Map(); // originalUrl -> { body, expires }
 
+// Other caches of the same data (the /public/bootstrap bundle) register
+// here to be cleared along with this one.
+const clearListeners = [];
+const onCacheClear = (fn) => clearListeners.push(fn);
+const clearAll = () => {
+  cache.clear();
+  clearListeners.forEach((fn) => fn());
+};
+
+// Lets the visitor's browser reuse public data for a minute while moving
+// between pages instead of asking the server again (each request costs
+// ~0.5s from Pakistan to the server in India). An admin edit therefore
+// reaches visitors within a minute.
+const BROWSER_CACHE = "public, max-age=60, stale-while-revalidate=300";
+
 const cachePublic = (ttlMs = DEFAULT_TTL_MS) => (req, res, next) => {
   if (req.method !== "GET") return next();
 
   const key = req.originalUrl;
+  res.set("Cache-Control", BROWSER_CACHE);
   const hit = cache.get(key);
   if (hit && hit.expires > Date.now()) {
     res.set("X-Cache", "HIT");
@@ -39,9 +55,9 @@ const invalidateOnAdminWrite = (req, res, next) => {
     return next();
   }
   res.on("finish", () => {
-    if (res.statusCode < 400 && req.user?.role === "admin") cache.clear();
+    if (res.statusCode < 400 && req.user?.role === "admin") clearAll();
   });
   next();
 };
 
-module.exports = { cachePublic, invalidateOnAdminWrite };
+module.exports = { cachePublic, invalidateOnAdminWrite, onCacheClear };
