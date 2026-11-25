@@ -3,6 +3,24 @@ const mongoose = require("mongoose");
 // A single global settings document — site-wide values an admin can edit
 // without a code deploy. Numbers are stored digits-only (country code +
 // number, no "+" or spaces) so they drop straight into a wa.me link.
+// The dropdown's starting list; USD doubles as the general option for
+// countries that have no currency of their own here.
+const DEFAULT_CURRENCIES = [
+  { code: "AED", label: "United Arab Emirates" },
+  { code: "AUD", label: "Australia" },
+  { code: "CAD", label: "Canada" },
+  { code: "EUR", label: "Europe" },
+  { code: "GBP", label: "United Kingdom" },
+  { code: "INR", label: "India" },
+  { code: "KWD", label: "Kuwait" },
+  { code: "MYR", label: "Malaysia" },
+  { code: "OMR", label: "Oman" },
+  { code: "PKR", label: "Pakistan" },
+  { code: "QAR", label: "Qatar" },
+  { code: "SAR", label: "Saudi Arabia" },
+  { code: "USD", label: "General (other countries) · USA" },
+];
+
 const settingsSchema = new mongoose.Schema(
   {
     whatsapp_general: {
@@ -31,8 +49,21 @@ const settingsSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Currencies offered in the price dropdown, managed by the admin
+    // (Settings → Currencies). Any code the exchange-rate feed knows works.
+    currencies: {
+      type: [
+        {
+          _id: false,
+          code: { type: String, uppercase: true, trim: true, match: /^[A-Z]{3}$/ },
+          label: { type: String, trim: true, maxlength: 60 },
+        },
+      ],
+      default: () => DEFAULT_CURRENCIES.map((c) => ({ ...c })),
+    },
   },
   { timestamps: true },
 );
 
 module.exports = mongoose.model("Settings", settingsSchema);
+module.exports.DEFAULT_CURRENCIES = DEFAULT_CURRENCIES;
