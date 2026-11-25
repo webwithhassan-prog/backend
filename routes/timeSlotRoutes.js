@@ -4,13 +4,14 @@ const { cachePublic } = require("../middleware/responseCache");
 const { protect } = require("../middleware/auth");
 const adminOnly = require("../middleware/adminOnly");
 const {
+  getPublicTimeSlots,
   getTimeSlots,
   createTimeSlot,
   updateTimeSlot,
   deleteTimeSlot,
 } = require("../controllers/timeSlotController");
 
-router.get("/public", cachePublic(), getTimeSlots);
+router.get("/public", cachePublic(), getPublicTimeSlots);
 
 router.get("/", protect, adminOnly, getTimeSlots);
 router.post("/", protect, adminOnly, createTimeSlot);

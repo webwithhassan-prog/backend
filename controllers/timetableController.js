@@ -1,7 +1,7 @@
 const DayPlan = require("../models/DayPlan");
 const TimeSlot = require("../models/TimeSlot");
 const Class = require("../models/Class");
-const { PKT_OFFSET_HOURS, pktToDate, toPKTParts } = require("../utils/pktTime");
+const { pktToDate, toPKTParts } = require("../utils/pktTime");
 const { getOrCreateSettings } = require("../utils/zoomLinkRotation");
 
 // TimeSlot.hour/minute are entered by the admin as Pakistan time — see the
@@ -31,10 +31,13 @@ const runRegeneration = async () => {
   const dayPlanMap = {};
   dayPlans.forEach((p) => (dayPlanMap[p.day_of_week] = p.type));
 
-  // One shared Zoom link for every class — see utils/zoomLinkRotation.js.
+  // Each class uses its slot's own Zoom link, or the shared one in
+  // Settings when the slot has none.
   const settings = await getOrCreateSettings();
-  const zoomMeetingId = settings.zoom_meeting_id;
-  const zoomJoinUrl = settings.zoom_join_url;
+  const linkFor = (slot) =>
+    slot.class_zoom_url
+      ? { zoomMeetingId: null, zoomJoinUrl: slot.class_zoom_url }
+      : { zoomMeetingId: settings.zoom_meeting_id, zoomJoinUrl: settings.zoom_join_url };
 
   // "Today" and its day-of-week must be read in PKT too — otherwise the
   // roughly 5-hour window around the PKT day boundary (19:00-23:59 UTC)
@@ -52,6 +55,9 @@ const runRegeneration = async () => {
     if (!type) continue; // no plan set for this day
 
     for (const slot of timeSlots) {
+      // Not every class runs every day — Sundays only have one or two.
+      if (!TimeSlot.daysOf(slot).includes(dayOfWeek)) continue;
+      const { zoomMeetingId, zoomJoinUrl } = linkFor(slot);
       const datetime = pktToDate(year, month, day, slot.hour, slot.minute);
 
       const existing = await Class.findOne({
@@ -60,9 +66,9 @@ const runRegeneration = async () => {
       });
 
       if (existing) {
-        // Keep the class's zoom link in sync with the current shared one —
-        // this is how a weekly rotation actually reaches classes that were
-        // already generated before the rotation happened.
+        // Keep the class's Zoom link in sync with its slot's (or the
+        // shared one) — this is how a changed link reaches classes that
+        // were already generated.
         const zoomChanged =
           existing.zoom_meeting_id !== zoomMeetingId ||
           existing.zoom_join_url !== zoomJoinUrl;
@@ -87,10 +93,13 @@ const runRegeneration = async () => {
   }
 
   // Purge stale/orphaned future classes — leftover from a time slot that
-  // was since edited or deleted, but whose old generated occurrences never
-  // got cleaned up. Only touches today onward; past history is untouched.
+  // was since edited, deleted or taken off that day of the week, whose old
+  // generated occurrences never got cleaned up. Only touches today onward;
+  // past history is untouched.
   const validKeys = new Set(
-    timeSlots.map((s) => `${s.trainer_ref}-${s.hour}-${s.minute}`),
+    timeSlots.flatMap((s) =>
+      TimeSlot.daysOf(s).map((d) => `${s.trainer_ref}-${s.hour}-${s.minute}-${d}`),
+    ),
   );
 
   const futureClasses = await Class.find({ datetime: { $gte: startOfToday } });
@@ -100,8 +109,8 @@ const runRegeneration = async () => {
       // Reverse the same PKT offset used when the class was created, so
       // this recovers the admin-entered slot hour/minute regardless of
       // the server process's own timezone.
-      const pktHour = (d.getUTCHours() + PKT_OFFSET_HOURS) % 24;
-      const key = `${c.trainer_ref}-${pktHour}-${d.getUTCMinutes()}`;
+      const { hour: pktHour, minute, dayOfWeek } = toPKTParts(d);
+      const key = `${c.trainer_ref}-${pktHour}-${minute}-${dayOfWeek}`;
       return !validKeys.has(key);
     })
     .map((c) => c._id);
