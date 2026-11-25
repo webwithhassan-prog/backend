@@ -20,11 +20,26 @@ const dropStaleIndexes = async (db) => {
   }
 };
 
+// Accounts already frozen or locked before frozen_at existed: their
+// days stop counting from now (only touches ones with no frozen_at yet).
+const backfillFrozenClocks = async (db) => {
+  try {
+    const { modifiedCount } = await db.collection('clients').updateMany(
+      { frozen_at: null, $or: [{ status: 'paused' }, { banned: true }] },
+      { $set: { frozen_at: new Date() } },
+    );
+    if (modifiedCount) console.log(`Frozen/locked accounts paused from now: ${modifiedCount}`);
+  } catch (err) {
+    console.error('Could not backfill frozen accounts:', err.message);
+  }
+};
+
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI);
     console.log(`MongoDB connected: ${conn.connection.host}`);
     await dropStaleIndexes(conn.connection.db);
+    await backfillFrozenClocks(conn.connection.db);
   } catch (err) {
     console.error(`MongoDB connection error: ${err.message}`);
     process.exit(1);

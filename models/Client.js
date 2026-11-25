@@ -24,6 +24,12 @@ const clientSchema = new mongoose.Schema(
       enum: ["active", "paused", "expired"],
       default: "expired",
     },
+    // When the account was frozen or locked; its days don't count until it
+    // is active again (see utils/clientFreeze.js).
+    frozen_at: {
+      type: Date,
+      default: null,
+    },
     banned: {
       type: Boolean,
       default: false,

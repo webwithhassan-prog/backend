@@ -8,7 +8,8 @@ const attachComputedAccess = (clientDoc) => {
     return client;
   }
 
-  const now = new Date();
+  // A frozen/locked account's days stand still at the moment it stopped.
+  const now = client.frozen_at ? new Date(client.frozen_at) : new Date();
   const expiresAt = new Date(client.access_expires_at);
   const msRemaining = expiresAt - now;
   const daysRemaining = Math.max(

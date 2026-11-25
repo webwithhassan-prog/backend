@@ -14,6 +14,9 @@ const runCheckinReminders = async () => {
 
   const clients = await Client.find({
     has_dietplan: true,
+    // Only clients whose plan is running — not expired or frozen ones.
+    status: "active",
+    access_expires_at: { $gt: new Date() },
     "push_subscriptions.0": { $exists: true },
     $or: [
       { last_progress_checkin: null },

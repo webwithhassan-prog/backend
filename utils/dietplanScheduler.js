@@ -8,8 +8,12 @@ const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
 const runDietplanAutoDeduction = async () => {
   const cutoff = new Date(Date.now() - FIFTEEN_DAYS_MS);
 
+  // Only while the plan runs: not after it expires, and not while the
+  // account is frozen (frozen days don't count).
   const due = {
     has_dietplan: true,
+    status: "active",
+    access_expires_at: { $gt: new Date() },
     last_dietplan_delivered_at: { $ne: null, $lte: cutoff },
     $expr: { $lt: ["$diet_plans_used", "$diet_plans_total"] },
   };

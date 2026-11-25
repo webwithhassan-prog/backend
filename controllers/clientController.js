@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const Client = require("../models/Client");
 const User = require("../models/User");
 const { attachComputedAccess } = require("../utils/clientAccess");
+const { stopClock, restartClock } = require("../utils/clientFreeze");
 const { forgetSession } = require("../middleware/auth");
 const { countryFromPhone } = require("../utils/countryFromPhone");
 
@@ -91,31 +92,33 @@ const getClientById = async (req, res) => {
   }
 };
 
-// @desc Freeze a client (pause access) — doesn't touch the expiry date itself
+// @desc Freeze a client (pause access). Their days stop counting until
+// they're resumed (utils/clientFreeze.js).
 const freezeClient = async (req, res) => {
   try {
-    const client = await Client.findByIdAndUpdate(
-      req.params.id,
-      { status: "paused" },
-      { returnDocument: "after" },
-    );
+    const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
+    client.status = "paused";
+    stopClock(client);
+    await client.save();
+    forgetSession(client.user_ref);
     res.json(attachComputedAccess(client));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// @desc Resume a frozen client
+// @desc Resume a frozen client — the days spent frozen are added back
 const resumeClient = async (req, res) => {
   try {
-    const client = await Client.findByIdAndUpdate(
-      req.params.id,
-      { status: "active" },
-      { returnDocument: "after" },
-    );
+    const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
-    res.json(attachComputedAccess(client));
+    client.status = "active";
+    // Still locked: the clock stays stopped until unbanned too.
+    const daysGivenBack = client.banned ? 0 : restartClock(client);
+    await client.save();
+    forgetSession(client.user_ref);
+    res.json({ ...attachComputedAccess(client), days_given_back: daysGivenBack });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -328,12 +331,13 @@ const banClient = async (req, res) => {
   const { reason } = req.body;
 
   try {
-    const client = await Client.findByIdAndUpdate(
-      req.params.id,
-      { banned: true, ban_reason: reason || null },
-      { returnDocument: "after" },
-    );
+    const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
+    client.banned = true;
+    client.ban_reason = reason || null;
+    // A locked account's days stop counting too.
+    stopClock(client);
+    await client.save();
     forgetSession(client.user_ref);
     res.json(attachComputedAccess(client));
   } catch (err) {
@@ -344,14 +348,15 @@ const banClient = async (req, res) => {
 // @desc Unban a client
 const unbanClient = async (req, res) => {
   try {
-    const client = await Client.findByIdAndUpdate(
-      req.params.id,
-      { banned: false, ban_reason: null },
-      { returnDocument: "after" },
-    );
+    const client = await Client.findById(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
+    client.banned = false;
+    client.ban_reason = null;
+    // Still frozen: the clock restarts when they're resumed.
+    const daysGivenBack = client.status === "paused" ? 0 : restartClock(client);
+    await client.save();
     forgetSession(client.user_ref);
-    res.json(attachComputedAccess(client));
+    res.json({ ...attachComputedAccess(client), days_given_back: daysGivenBack });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
