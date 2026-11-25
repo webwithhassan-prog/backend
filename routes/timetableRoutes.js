@@ -6,10 +6,12 @@ const {
   regenerateSchedule,
   getZoomLink,
   setZoomLink,
+  setZoomMode,
 } = require("../controllers/timetableController");
 
 router.post("/regenerate", protect, adminOnly, regenerateSchedule);
 router.get("/zoom-link", protect, adminOnly, getZoomLink);
 router.put("/zoom-link", protect, adminOnly, setZoomLink);
+router.put("/zoom-mode", protect, adminOnly, setZoomMode);
 
 module.exports = router;

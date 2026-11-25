@@ -31,11 +31,13 @@ const runRegeneration = async () => {
   const dayPlanMap = {};
   dayPlans.forEach((p) => (dayPlanMap[p.day_of_week] = p.type));
 
-  // Each class uses its slot's own Zoom link, or the shared one in
-  // Settings when the slot has none.
+  // With the admin's "use each class's own link" switch on, a class uses
+  // its slot's link when it has one; otherwise (or with the switch off)
+  // the shared link in Settings.
   const settings = await getOrCreateSettings();
+  const ownLinks = !!settings.use_class_zoom_links;
   const linkFor = (slot) =>
-    slot.class_zoom_url
+    ownLinks && slot.class_zoom_url
       ? { zoomMeetingId: null, zoomJoinUrl: slot.class_zoom_url }
       : { zoomMeetingId: settings.zoom_meeting_id, zoomJoinUrl: settings.zoom_join_url };
 
@@ -134,13 +136,24 @@ const regenerateSchedule = async (req, res) => {
   }
 };
 
-// @desc Admin — the one shared Zoom link used for every class
+// How many classes have their own link saved, for the admin switch.
+const linkCounts = async () => {
+  const [total, withOwn] = await Promise.all([
+    TimeSlot.countDocuments(),
+    TimeSlot.countDocuments({ class_zoom_url: { $nin: [null, ""] } }),
+  ]);
+  return { slots_total: total, slots_with_own_link: withOwn };
+};
+
+// @desc Admin — the shared Zoom link and the own-links switch
 const getZoomLink = async (req, res) => {
   try {
     const settings = await getOrCreateSettings();
     res.json({
       zoom_join_url: settings.zoom_join_url || null,
       zoom_rotated_at: settings.zoom_rotated_at || null,
+      use_class_zoom_links: !!settings.use_class_zoom_links,
+      ...(await linkCounts()),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -187,9 +200,35 @@ const setZoomLink = async (req, res) => {
   }
 };
 
+// @desc Admin — switch between every class using the shared link (off)
+// and classes using their own saved links (on). Upcoming classes switch
+// straight away.
+const setZoomMode = async (req, res) => {
+  const enabled = req.body?.use_class_zoom_links;
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json({ message: "use_class_zoom_links must be true or false" });
+  }
+  try {
+    const counts = await linkCounts();
+    if (enabled && counts.slots_with_own_link === 0) {
+      return res.status(400).json({
+        message: "Add a Zoom link to at least one class first (edit a time slot).",
+      });
+    }
+    const settings = await getOrCreateSettings();
+    settings.use_class_zoom_links = enabled;
+    await settings.save();
+    await runRegeneration();
+    res.json({ use_class_zoom_links: enabled, ...counts });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   regenerateSchedule,
   runRegeneration,
   getZoomLink,
   setZoomLink,
+  setZoomMode,
 };

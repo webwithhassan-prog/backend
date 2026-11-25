@@ -43,6 +43,13 @@ const settingsSchema = new mongoose.Schema(
     zoom_rotated_at: {
       type: Date,
     },
+    // Safety switch: off = every class uses the shared link above (even
+    // classes that have their own link saved); on = classes with their own
+    // link use it. Turning it off is an instant fallback.
+    use_class_zoom_links: {
+      type: Boolean,
+      default: false,
+    },
     // Lets the admin mute the "new manual payment" alert email without a
     // deploy — the sidebar badge and Profile notice keep working either way.
     manual_payment_alerts_enabled: {
