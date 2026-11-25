@@ -1,5 +1,5 @@
 const Plan = require("../models/Plan");
-const { getActiveDiscountPercent, applyDiscount } = require("../utils/offerDiscount");
+const { getActiveOffer, applyDiscount } = require("../utils/offerDiscount");
 
 // @desc Get all plans (public) — each plan includes any currently active
 // discount so the pricing page can show it without a second request
@@ -8,13 +8,14 @@ const getPublicPlans = async (req, res) => {
     const plans = await Plan.find();
     const withDiscounts = await Promise.all(
       plans.map(async (plan) => {
-        const discount_percent = await getActiveDiscountPercent(
-          plan.product_type,
-        );
+        const { percent: discount_percent, endsAt } = await getActiveOffer(plan.product_type);
         return {
           ...plan.toObject(),
           discount_percent,
           discounted_price: applyDiscount(plan.price, discount_percent),
+          // When a limited-time offer ends — the site drops the discount
+          // then, even on a page loaded earlier.
+          discount_ends_at: endsAt,
         };
       }),
     );

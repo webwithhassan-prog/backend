@@ -33,6 +33,17 @@ const offerSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Limited-time window (e.g. a month-end sale for 2-3 days). Empty start
+    // = from now; empty end = until turned off. Outside the window the offer
+    // neither shows nor discounts anything.
+    starts_at: {
+      type: Date,
+      default: null,
+    },
+    ends_at: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );
