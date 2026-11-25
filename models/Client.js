@@ -82,6 +82,17 @@ const clientSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Class times (Pakistan time, "HH:MM") the client tapped "Remind me" on
+    // — a notification ~10 minutes before each of those classes.
+    class_alert_times: {
+      type: [{ type: String, match: /^\d{2}:\d{2}$/ }],
+      default: [],
+    },
+    // First time they joined a live class — ticks the first-week checklist.
+    first_class_joined_at: {
+      type: Date,
+      default: null,
+    },
     active_plans: [
       {
         plan_ref: { type: mongoose.Schema.Types.ObjectId, ref: "Plan" },

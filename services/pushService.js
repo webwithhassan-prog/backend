@@ -90,4 +90,15 @@ const sendCheckinReminderPush = async (client) => {
   });
 };
 
-module.exports = { sendClassReminderPush, sendCheckinReminderPush };
+// ~10 minutes before a class the client asked to be reminded about. No
+// clock time in the text: clients are in different timezones.
+const sendClassStartingPush = async (client, cls) => {
+  await sendPushToClient(client, {
+    title: "Your class starts soon",
+    body: `${cls.type || "Your workout class"} starts in about 10 minutes — tap to join.`,
+    url: "/client#upcoming-classes",
+    tag: `class-${cls._id}`,
+  });
+};
+
+module.exports = { sendClassReminderPush, sendCheckinReminderPush, sendClassStartingPush };

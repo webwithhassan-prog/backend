@@ -37,6 +37,11 @@ const classSchema = new mongoose.Schema(
     zoom_join_url: {
       type: String,
     },
+    // When the "starting soon" notifications went out (once per class).
+    starting_soon_sent_at: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

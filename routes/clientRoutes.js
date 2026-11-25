@@ -18,6 +18,8 @@ const {
   deliverDietPlan,
   dismissDietplanNotification,
   recordProgressCheckin,
+  getMyProgress,
+  setClassAlerts,
   completeOnboarding,
   addPushSubscription,
   removePushSubscription,
@@ -42,6 +44,8 @@ router.put(
   dismissDietplanNotification,
 );
 router.put("/:id/progress-checkin", protect, recordProgressCheckin);
+router.get("/:id/progress", protect, getMyProgress);
+router.put("/:id/class-alerts", protect, setClassAlerts);
 router.put("/:id/onboarding-complete", protect, completeOnboarding);
 router.post("/:id/push-subscription", protect, addPushSubscription);
 router.delete("/:id/push-subscription", protect, removePushSubscription);

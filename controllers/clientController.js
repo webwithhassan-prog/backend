@@ -5,6 +5,14 @@ const { attachComputedAccess } = require("../utils/clientAccess");
 const { stopClock, restartClock } = require("../utils/clientFreeze");
 const { forgetSession } = require("../middleware/auth");
 const { countryFromPhone } = require("../utils/countryFromPhone");
+const ProgressEntry = require("../models/ProgressEntry");
+const { dateStringPKT } = require("../utils/pktTime");
+
+// A number from the check-in form within sensible bounds, else null.
+const numberIn = (value, min, max) => {
+  const n = Number(String(value ?? "").replace(/[^\d.]/g, ""));
+  return value !== "" && value != null && Number.isFinite(n) && n >= min && n <= max ? n : null;
+};
 
 // @desc Get all clients (Enrollments)
 const getClients = async (req, res) => {
@@ -476,7 +484,67 @@ const recordProgressCheckin = async (req, res) => {
     client.last_progress_checkin = new Date();
     await client.save();
 
+    // The check-in's numbers, for the progress chart (one entry per day).
+    const weight = numberIn(req.body?.weight_kg, 20, 400);
+    if (weight !== null) {
+      await ProgressEntry.findOneAndUpdate(
+        { client_ref: client._id, date: dateStringPKT() },
+        {
+          weight_kg: weight,
+          starting_weight_kg: numberIn(req.body?.starting_weight_kg, 20, 400),
+          inch_loss: numberIn(req.body?.inch_loss, 0, 200),
+        },
+        { upsert: true, setDefaultsOnInsert: true },
+      );
+    }
+
     res.json({ last_progress_checkin: client.last_progress_checkin });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Loads the client and checks it's the logged-in client's own record.
+const ownClient = async (req, res) => {
+  const client = await Client.findById(req.params.id);
+  if (!client) {
+    res.status(404).json({ message: "Client not found" });
+    return null;
+  }
+  if (client.user_ref.toString() !== req.user._id.toString()) {
+    res.status(403).json({ message: "Not authorized" });
+    return null;
+  }
+  return client;
+};
+
+// @desc Client — their check-in numbers, oldest first (progress chart)
+const getMyProgress = async (req, res) => {
+  try {
+    const client = await ownClient(req, res);
+    if (!client) return;
+    const entries = await ProgressEntry.find({ client_ref: client._id })
+      .select("date weight_kg starting_weight_kg inch_loss -_id")
+      .sort({ date: 1 })
+      .lean();
+    res.json(entries);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// @desc Client — the class times to remind them about ("HH:MM", Pakistan time)
+const setClassAlerts = async (req, res) => {
+  try {
+    const client = await ownClient(req, res);
+    if (!client) return;
+    const times = Array.isArray(req.body?.times) ? req.body.times : null;
+    if (!times || !times.every((t) => typeof t === "string" && /^\d{2}:\d{2}$/.test(t))) {
+      return res.status(400).json({ message: "times must be a list like [\"19:00\"]" });
+    }
+    client.class_alert_times = [...new Set(times)].sort().slice(0, 24);
+    await client.save();
+    res.json({ class_alert_times: client.class_alert_times });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -574,4 +642,6 @@ module.exports = {
   completeOnboarding,
   addPushSubscription,
   removePushSubscription,
+  getMyProgress,
+  setClassAlerts,
 };

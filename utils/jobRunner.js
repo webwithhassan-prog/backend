@@ -4,6 +4,7 @@ const { runClassRegeneration } = require("./classScheduler");
 const { runClassReminders, POLL_MS } = require("./classReminderScheduler");
 const { runCheckinReminders } = require("./checkinReminderScheduler");
 const { runMaintenance } = require("./maintenanceScheduler");
+const { runClassStartingSoon } = require("./classStartingSoonScheduler");
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const TICK_MS = 5 * 60 * 1000;
@@ -15,6 +16,8 @@ const JOBS = [
   { name: "dietplanDeduction", everyMs: ONE_DAY_MS, run: runDietplanAutoDeduction },
   { name: "classSchedule", everyMs: ONE_DAY_MS, run: runClassRegeneration },
   { name: "classReminders", everyMs: POLL_MS, run: runClassReminders },
+  // Runs on every tick: it only acts on classes starting 5-15 min ahead.
+  { name: "classStartingSoon", everyMs: 0, run: runClassStartingSoon },
   { name: "checkinReminders", everyMs: ONE_DAY_MS, run: runCheckinReminders },
   { name: "maintenance", everyMs: ONE_DAY_MS, run: runMaintenance },
 ];

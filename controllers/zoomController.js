@@ -48,7 +48,11 @@ const joinViaClass = async (req, res) => {
 
     const client = await Client.findById(client_id);
     if (!client) return res.status(404).send("Client not found");
-    if (client.status !== "active")
+    // The saved status can still say "active" after the plan's end date,
+    // so the end date is checked too.
+    const expired =
+      !client.access_expires_at || new Date(client.access_expires_at) <= new Date();
+    if (client.status !== "active" || expired)
       return res.status(403).send("Subscription not active");
     if (!client.has_workout)
       return res.status(403).send("Workout package not active");
@@ -57,6 +61,14 @@ const joinViaClass = async (req, res) => {
     if (!classDoc) return res.status(404).send("Class not found");
     if (!classDoc.zoom_join_url)
       return res.status(404).send("Zoom link not available yet");
+
+    // First class ever — ticks the first-week checklist.
+    if (!client.first_class_joined_at) {
+      await Client.updateOne(
+        { _id: client._id, first_class_joined_at: null },
+        { $set: { first_class_joined_at: new Date() } },
+      );
+    }
 
     return res.redirect(302, classDoc.zoom_join_url);
   } catch (err) {
